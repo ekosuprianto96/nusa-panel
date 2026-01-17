@@ -1,0 +1,44 @@
+# Build artifacts
+/target/
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.bak
+*.backup
+
+# Coverage reports
+coverage/
+*.profraw
+
+# Database files (if using SQLite for testing)
+*.db
+*.sqlite
+
+# SSL/TLS certificates (jangan commit ke repo)
+*.pem
+*.key
+*.crt
+*.csr
+
+# User data directories
+/data/
+/uploads/
+/backups/

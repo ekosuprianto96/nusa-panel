@@ -1,0 +1,116 @@
+    Checking nusa-panel v0.1.0 (C:\my-project\VPS-HOSTED-PROJECT\nusa-panel-rust)
+warning: unused import: `std::path::PathBuf`
+ --> src\models\file.rs:7:5
+  |
+7 | use std::path::PathBuf;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `uuid::Uuid`
+ --> src\models\user.rs:8:5
+  |
+8 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+
+warning: unused import: `delete`
+ --> src\routes\files.rs:7:14
+  |
+7 | use rocket::{delete, get, post, put, routes, Route, State};
+  |              ^^^^^^
+
+warning: unused import: `DateTime`
+ --> src\services\file_service.rs:6:14
+  |
+6 | use chrono::{DateTime, TimeZone, Utc};
+  |              ^^^^^^^^
+
+warning: unused imports: `ChangePermissionsRequest`, `CompressRequest`, `ReadFileRequest`, `permissions_to_octal`, and `permissions_to_string`
+  --> src\services\file_service.rs:15:5
+   |
+15 |     permissions_to_octal, permissions_to_string, ChangePermissionsRequest, CompressRequest,
+   |     ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+16 |     CopyRequest, CreateFileRequest, DeleteRequest, FileContentResponse, FileInfo, FileListResponse,
+17 |     FileType, MoveRequest, ReadFileRequest, RenameRequest, WriteFileRequest,
+   |                            ^^^^^^^^^^^^^^^
+
+warning: unused import: `UpdateRedisRequest`
+  --> src\services\redis_service.rs:14:79
+   |
+14 | use crate::models::{EnableRedisRequest, RedisInstance, RedisInstanceResponse, UpdateRedisRequest};
+   |                                                                               ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `TimeZone`
+ --> src\services\security_service.rs:6:14
+  |
+6 | use chrono::{TimeZone, Utc};
+  |              ^^^^^^^^
+
+warning: unused import: `rand::Rng`
+ --> src\services\system_service.rs:7:5
+  |
+7 | use rand::Rng; // For simulation
+  |     ^^^^^^^^^
+
+warning: unused import: `UserRole`
+  --> src\services\user_service.rs:10:60
+   |
+10 | use crate::models::{UpdateUserRequest, User, UserResponse, UserRole};
+   |                                                            ^^^^^^^^
+
+warning: unused import: `crate::config::CONFIG`
+  --> src\services\web_server_service.rs:11:5
+   |
+11 | use crate::config::CONFIG;
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `db`
+   --> src\routes\users.rs:196:5
+    |
+196 |     db: &State<Database>,
+    |     ^^ help: if this is intentional, prefix it with an underscore: `_db`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+error[E0382]: use of moved value: `request.install_path`
+    --> src\services\app_installer_service.rs:106:77
+     |
+105  |             app_url: format!("http://{}/{}", domain.domain_name, request.install_path.unwrap_or_default()),
+     |                                                                  -------------------- ------------------- `request.install_path` moved due to this method call
+     |                                                                  |
+     |                                                                  help: consider calling `.as_ref()` or `.as_mut()` to borrow the type's contents
+106  |             admin_url: format!("http://{}/{}/wp-admin", domain.domain_name, request.install_path.unwrap_or_default()),
+     |                                                                             ^^^^^^^^^^^^^^^^^^^^ value used here after move
+     |
+note: `std::option::Option::<T>::unwrap_or_default` takes ownership of the receiver `self`, which moves `request.install_path`
+    --> C:\Users\zyrex\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\option.rs:1073:30
+     |
+1073 |     pub fn unwrap_or_default(self) -> T
+     |                              ^^^^
+     = note: move occurs because `request.install_path` has type `std::option::Option<std::string::String>`, which does not implement the `Copy` trait
+help: you can `clone` the value and consume it, but this might not be your desired behavior
+     |
+105  |             app_url: format!("http://{}/{}", domain.domain_name, request.install_path.clone().unwrap_or_default()),
+     |                                                                                      ++++++++
+
+warning: unused variable: `output_comp`
+   --> src\services\app_installer_service.rs:176:13
+    |
+176 |         let output_comp = Command::new("composer")
+    |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_output_comp`
+
+warning: unused variable: `base_path`
+   --> src\services\file_service.rs:370:13
+    |
+370 |         let base_path = Self::get_user_base_path(user_id);
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_base_path`
+
+warning: unused variable: `user_id`
+   --> src\services\security_service.rs:231:34
+    |
+231 |     pub async fn get_access_logs(user_id: &str) -> ApiResult<Vec<AccessLogEntry>> {
+    |                                  ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_id`
+
+For more information about this error, try `rustc --explain E0382`.
+warning: `nusa-panel` (lib) generated 14 warnings
+error: could not compile `nusa-panel` (lib) due to 1 previous error; 14 warnings emitted

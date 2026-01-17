@@ -1,0 +1,34 @@
+[default]
+address = "127.0.0.1"
+port = 8095
+workers = 4
+keep_alive = 5
+log_level = "normal"
+# Secret key untuk secure cookies - GANTI DI PRODUCTION!
+secret_key = "hPRYyVRiMyxpw5sBB1XeCMN1kFsDCqKvBi2QJxBVHQk="
+
+[default.limits]
+# Limit untuk form data
+forms = "32 KiB"
+# Limit untuk JSON payload
+json = "1 MiB"
+# Limit untuk file upload (10MB)
+file = "10 MiB"
+# Limit untuk data-form multipart
+data-form = "50 MiB"
+
+[default.tls]
+# TLS akan dikonfigurasi di production
+
+[debug]
+address = "127.0.0.1"
+port = 8095
+log_level = "debug"
+
+[release]
+address = "0.0.0.0"
+port = 8095
+log_level = "critical"
+# TLS configuration untuk production
+# certs = "/path/to/cert.pem"
+# key = "/path/to/key.pem"
