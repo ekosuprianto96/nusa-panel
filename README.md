@@ -1,7 +1,3 @@
-Berikut versi **Markdown (MD)** yang rapi, terstruktur, dan siap dipakai untuk README, dokumentasi, atau wiki NusaPanel.
-
----
-
 # 📌 NusaPanel Feature Summary
 
 Berikut adalah rangkuman fitur yang sudah ada di dalam **NusaPanel** berdasarkan analisis kode **Frontend & Backend**.
