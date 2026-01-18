@@ -43,7 +43,7 @@ pub async fn enable_redis(
     user: AuthenticatedUser,
     request: Json<EnableRedisRequest>,
 ) -> ApiResult<Json<ApiResponse<RedisInstanceResponse>>> {
-    let instance = RedisService::enable_redis(db.get_pool(), &user.id, request.into_inner()).await?;
+    let instance = RedisService::enable_redis(db.get_pool(), &user.username, request.into_inner()).await?;
     Ok(success(instance))
 }
 

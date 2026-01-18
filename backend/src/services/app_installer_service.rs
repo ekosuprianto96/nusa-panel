@@ -173,7 +173,7 @@ impl AppInstallerService {
     ) -> ApiResult<()> {
         // A. Composer create-project
         // composer create-project laravel/laravel .
-        let output_comp = Command::new("composer")
+        let _output_comp = Command::new("composer")
             .arg("create-project")
             .arg("laravel/laravel")
             .arg(target_dir)

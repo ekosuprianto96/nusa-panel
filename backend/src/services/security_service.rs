@@ -3,9 +3,9 @@
 //! Business logic untuk Security & Monitoring.
 //! Menangani IP Blocking, SSH Key management, dan Resource Monitoring (Simulasi).
 
-use chrono::{TimeZone, Utc};
-use rand::Rng; // For simulation
+use chrono::{Utc};
 use sqlx::MySqlPool;
+use rand::Rng; // For simulation
 use uuid::Uuid;
 use validator::Validate;
 
@@ -228,7 +228,7 @@ impl SecurityService {
     }
 
     /// Get Access Logs (Simulasi)
-    pub async fn get_access_logs(user_id: &str) -> ApiResult<Vec<AccessLogEntry>> {
+    pub async fn get_access_logs(_user_id: &str) -> ApiResult<Vec<AccessLogEntry>> {
         // Simulasi dummy logs
         let mut logs = Vec::new();
         let now = Utc::now();

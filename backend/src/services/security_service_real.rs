@@ -14,7 +14,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
-use sysinfo::{Cpu, Disk, Disks, System};
+use sysinfo::{Disks, System};
 
 use crate::errors::{ApiError, ApiResult};
 use crate::models::{

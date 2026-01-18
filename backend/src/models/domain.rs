@@ -305,6 +305,51 @@ pub struct UpdateDnsRecordRequest {
     pub priority: Option<i32>,
 }
 
+/// Redirect entity dari database
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct Redirect {
+    pub id: String,
+    pub domain_id: String,
+    pub source_path: String,
+    pub destination_url: String,
+    #[sqlx(rename = "type")]
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// DTO untuk membuat redirect
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateRedirectRequest {
+    #[validate(length(min = 1, max = 500, message = "Source path maksimal 500 karakter"))]
+    pub source_path: String,
+    
+    #[validate(url(message = "Destination URL tidak valid"))]
+    pub destination_url: String,
+    
+    pub type_: String,
+}
+
+/// Domain Alias entity dari database
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct DomainAlias {
+    pub id: String,
+    pub domain_id: String,
+    pub alias_domain: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// DTO untuk membuat alias
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateAliasRequest {
+    #[validate(length(min = 4, max = 255, message = "Nama domain harus 4-255 karakter"))]
+    #[validate(regex(
+        path = "crate::models::domain::DOMAIN_REGEX",
+        message = "Format nama domain tidak valid"
+    ))]
+    pub alias_domain: String,
+}
+
 /// Regex untuk validasi domain name
 pub static DOMAIN_REGEX: once_cell::sync::Lazy<regex::Regex> =
     once_cell::sync::Lazy::new(|| {

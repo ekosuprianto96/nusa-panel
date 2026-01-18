@@ -7,7 +7,7 @@ use sqlx::MySqlPool;
 use validator::Validate;
 
 use crate::errors::{ApiError, ApiResult};
-use crate::models::{UpdateUserRequest, User, UserResponse, UserRole};
+use crate::models::{UpdateUserRequest, User, UserResponse};
 
 /// Service untuk operasi user
 pub struct UserService;

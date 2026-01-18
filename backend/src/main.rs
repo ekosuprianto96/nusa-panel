@@ -22,7 +22,12 @@ use std::path::PathBuf;
 /// Ini memungkinkan Vue Router untuk handle routing di client-side.
 #[get("/<_path..>", rank = 100)]
 async fn spa_fallback(_path: PathBuf) -> Option<NamedFile> {
-    NamedFile::open("../frontend/dist/index.html").await.ok()
+    let dist_dir = std::env::var("FRONTEND_DIST")
+        .unwrap_or_else(|_| "frontend/dist".to_string());
+
+    let index_path = PathBuf::from(dist_dir).join("index.html");
+
+    NamedFile::open(index_path).await.ok()
 }
 
 /// Konfigurasi CORS untuk keamanan cross-origin requests
@@ -78,6 +83,9 @@ async fn rocket() -> _ {
         .to_cors()
         .expect("Failed to create CORS fairing");
 
+    let frontend_path = std::env::var("FRONTEND_DIST")
+    .unwrap_or_else(|_| format!("{}/frontend/dist", std::env::current_dir().unwrap().display()));
+
     // Build Rocket instance
     rocket::build()
         // Attach CORS
@@ -103,8 +111,8 @@ async fn rocket() -> _ {
         .mount("/api/apps", routes::app_routes())
         .mount("/api/redis", routes::redis_routes())
         // Serve Static Files for Frontend
-        .mount("/", FileServer::from("../frontend/dist"))
-        // SPA Fallback - harus setelah semua routes lainnya (rank 100)
+        .mount("/", FileServer::from(&frontend_path))
+        // Frontend
         .mount("/", routes![spa_fallback])
         // Manage application state
         .manage(config)

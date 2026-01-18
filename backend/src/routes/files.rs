@@ -4,7 +4,7 @@
 
 use rocket::form::FromForm;
 use rocket::serde::json::Json;
-use rocket::{delete, get, post, put, routes, Route, State};
+use rocket::{get, post, put, routes, Route, State};
 use serde::Deserialize;
 
 use crate::database::Database;

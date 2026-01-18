@@ -193,7 +193,7 @@ pub async fn update_user_role(
 /// Untuk saat ini mengembalikan placeholder data.
 #[get("/<id>/usage")]
 pub async fn get_user_usage(
-    db: &State<Database>,
+    _db: &State<Database>,
     user: AuthenticatedUser,
     id: &str,
 ) -> ApiResult<Json<ApiResponse<UserResourceUsage>>> {

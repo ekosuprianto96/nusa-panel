@@ -12,7 +12,7 @@ use crate::errors::{ApiError, ApiResult};
 use crate::models::{
     CreateDnsRecordRequest, CreateDomainRequest, CreateSubdomainRequest, DnsRecord,
     DnsRecordResponse, Domain, DomainResponse, PaginatedDomains, Subdomain, SubdomainResponse, UpdateDnsRecordRequest,
-    UpdateDomainRequest,
+    UpdateDomainRequest, CreateRedirectRequest, CreateAliasRequest, Redirect, DomainAlias,
 };
 
 /// Service untuk operasi domain
@@ -730,6 +730,234 @@ impl DomainService {
             record.name,
             domain.domain_name
         );
+
+        Ok(())
+    }
+
+    // ==========================================
+    // REDIRECT OPERATIONS
+    // ==========================================
+
+    /// Get all redirects for domain
+    pub async fn get_redirects(
+        pool: &MySqlPool,
+        domain_id: &str,
+        user_id: &str,
+    ) -> ApiResult<Vec<Redirect>> {
+        // Verify domain ownership
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Forbidden);
+        }
+
+        let redirects = sqlx::query_as::<_, Redirect>(
+            "SELECT * FROM redirects WHERE domain_id = ? ORDER BY created_at DESC",
+        )
+        .bind(domain_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(redirects)
+    }
+
+    /// Create redirect
+    pub async fn create_redirect(
+        pool: &MySqlPool,
+        domain_id: &str,
+        user_id: &str,
+        request: CreateRedirectRequest,
+    ) -> ApiResult<Redirect> {
+        // Validation
+        request
+            .validate()
+            .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+        // Verify domain ownership
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Forbidden);
+        }
+
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+
+        sqlx::query(
+            "INSERT INTO redirects (id, domain_id, source_path, destination_url, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(domain_id)
+        .bind(&request.source_path)
+        .bind(&request.destination_url)
+        .bind(&request.type_)
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+        Ok(Redirect {
+            id,
+            domain_id: domain_id.to_string(),
+            source_path: request.source_path,
+            destination_url: request.destination_url,
+            type_: request.type_,
+            created_at: now,
+        })
+    }
+
+    /// Delete redirect
+    pub async fn delete_redirect(
+        pool: &MySqlPool,
+        domain_id: &str,
+        redirect_id: &str,
+        user_id: &str,
+    ) -> ApiResult<()> {
+        // Verify domain ownership
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Forbidden);
+        }
+
+        let result = sqlx::query("DELETE FROM redirects WHERE id = ? AND domain_id = ?")
+            .bind(redirect_id)
+            .bind(domain_id)
+            .execute(pool)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::NotFound("Redirect".to_string()));
+        }
+
+        Ok(())
+    }
+
+    // ==========================================
+    // DOMAIN ALIAS OPERATIONS
+    // ==========================================
+
+    /// Get all aliases for domain
+    pub async fn get_aliases(
+        pool: &MySqlPool,
+        domain_id: &str,
+        user_id: &str,
+    ) -> ApiResult<Vec<DomainAlias>> {
+        // Verify domain ownership
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Forbidden);
+        }
+
+        let aliases = sqlx::query_as::<_, DomainAlias>(
+            "SELECT * FROM domain_aliases WHERE domain_id = ? ORDER BY created_at DESC",
+        )
+        .bind(domain_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(aliases)
+    }
+
+    /// Create alias
+    pub async fn create_alias(
+        pool: &MySqlPool,
+        domain_id: &str,
+        user_id: &str,
+        request: CreateAliasRequest,
+    ) -> ApiResult<DomainAlias> {
+        // Validation
+        request
+            .validate()
+            .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+        // Verify domain ownership
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Forbidden);
+        }
+
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+        let alias_domain = request.alias_domain.to_lowercase();
+
+        // Check duplicate
+        let count =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domain_aliases WHERE alias_domain = ?")
+                .bind(&alias_domain)
+                .fetch_one(pool)
+                .await?;
+
+        if count > 0 {
+            return Err(ApiError::AlreadyExists("Alias domain".to_string()));
+        }
+
+        sqlx::query(
+            "INSERT INTO domain_aliases (id, domain_id, alias_domain, created_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(domain_id)
+        .bind(&alias_domain)
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+        Ok(DomainAlias {
+            id,
+            domain_id: domain_id.to_string(),
+            alias_domain,
+            created_at: now,
+        })
+    }
+
+    /// Delete alias
+    pub async fn delete_alias(
+        pool: &MySqlPool,
+        domain_id: &str,
+        alias_id: &str,
+        user_id: &str,
+    ) -> ApiResult<()> {
+        // Verify domain ownership
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Forbidden);
+        }
+
+        let result = sqlx::query("DELETE FROM domain_aliases WHERE id = ? AND domain_id = ?")
+            .bind(alias_id)
+            .bind(domain_id)
+            .execute(pool)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::NotFound("Alias".to_string()));
+        }
 
         Ok(())
     }

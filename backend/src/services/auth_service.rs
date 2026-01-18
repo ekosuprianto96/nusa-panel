@@ -14,6 +14,7 @@ use crate::models::{
 };
 use crate::utils::jwt::{create_token_pair, validate_refresh_token, TokenPair, TokenPayload};
 use crate::utils::password::{hash_password, validate_password_strength, verify_password};
+use crate::utils::system::{ensure_system_user, update_system_password};
 
 /// Service untuk operasi authentication
 pub struct AuthService;
@@ -68,8 +69,9 @@ impl AuthService {
         // Hash password
         let password_hash = hash_password(&request.password)?;
 
-        // Generate UUID
-        let user_id = Uuid::new_v4().to_string();
+        // Generate Readable User ID (u_ + 12 chars of UUID)
+        let uuid = Uuid::new_v4().simple().to_string();
+        let user_id = format!("u_{}", &uuid[0..12]);
         let now = Utc::now();
 
         // Insert user
@@ -97,6 +99,14 @@ impl AuthService {
             .await?;
 
         tracing::info!("New user registered: {}", user.username);
+
+        // Ensure System User Exists
+        // NOTE: We use the raw password here to set it for the system user
+        if let Err(e) = ensure_system_user(&user.username, &request.password) {
+             tracing::error!("Failed to create system user for {}: {}", user.username, e);
+             // We don't fail the request here, but we log the error. 
+             // Ideally we might want to return a warning or fail, but user creation in DB succeeded.
+        }
 
         Ok(UserResponse::from(user))
     }
@@ -141,6 +151,13 @@ impl AuthService {
             return Err(ApiError::InvalidCredentials);
         }
 
+        // Backfill: Ensure system user exists (if user valid)
+        // This handles older users or migration cases
+        if let Err(e) = ensure_system_user(&user.username, &request.password) {
+             tracing::warn!("Backfill system user for {} failed: {}", user.username, e);
+             // Proceed anyway, don't block login
+        }
+
         // Update last login time
         sqlx::query("UPDATE users SET last_login_at = ? WHERE id = ?")
             .bind(Utc::now())
@@ -150,9 +167,7 @@ impl AuthService {
 
         // Create token pair
         let payload = TokenPayload {
-            user_id: Uuid::parse_str(&user.id).map_err(|_| {
-                ApiError::InternalError("Invalid user ID format".to_string())
-            })?,
+            user_id: user.id.clone(),
             username: user.username.clone(),
             email: user.email.clone(),
             role: user.role.clone(),
@@ -196,9 +211,7 @@ impl AuthService {
 
         // Create new token pair
         let payload = TokenPayload {
-            user_id: Uuid::parse_str(&user.id).map_err(|_| {
-                ApiError::InternalError("Invalid user ID format".to_string())
-            })?,
+            user_id: user.id,
             username: user.username,
             email: user.email,
             role: user.role,
@@ -263,6 +276,11 @@ impl AuthService {
             .bind(user_id)
             .execute(pool)
             .await?;
+
+        // Sync system password
+        if let Err(e) = update_system_password(&user.username, &request.new_password) {
+            tracing::error!("Failed to sync system password for {}: {}", user.username, e);
+        }
 
         tracing::info!("Password changed for user: {}", user.username);
 

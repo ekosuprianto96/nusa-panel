@@ -174,14 +174,15 @@ impl SystemServiceReal {
     pub async fn create_backup(
         pool: &MySqlPool,
         user_id: &str,
+        username: &str,
         request: CreateBackupRequest,
     ) -> ApiResult<SystemBackup> {
         request.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
         
         let backup_id = Uuid::new_v4().to_string();
         let now = Utc::now();
-        let system_username = format!("user_{}", user_id);
-        let backup_filename = format!("backup_{}_{}_{}.tar.gz", user_id, request.backup_type, now.format("%Y%m%d%H%M%S"));
+        let system_username = format!("user_{}", username);
+        let backup_filename = format!("backup_{}_{}_{}.tar.gz", username, request.backup_type, now.format("%Y%m%d%H%M%S"));
         let backup_path = format!("/home/{}/backups/{}", system_username, backup_filename);
         let backup_dir = format!("/home/{}/backups", system_username);
 
@@ -206,6 +207,9 @@ impl SystemServiceReal {
                 // Untuk sekarang kita simulasi command success agar tidak error di dev environment
                 // Di production, gunakan `mysqldump` dengan credentials yang benar
                 Command::new("echo").arg("Mysqldump implementation needed").output()?
+                // Command::new("mysqldump")
+                // .arg("-u")
+                // .arg("-p")
             },
             "full" => {
                 // tar + mysqldump wrapper
@@ -312,7 +316,7 @@ impl SystemServiceReal {
     // ==========================================
 
     pub async fn get_service_status() -> ApiResult<Vec<ServiceStatus>> {
-        let services = vec!["nginx", "mysql", "php7.4-fpm", "php8.1-fpm", "php8.2-fpm", "php8.3-fpm", "cron"];
+        let services = vec!["nginx", "mysql", "cron"];
         let mut statuses = Vec::new();
 
         for service in services {

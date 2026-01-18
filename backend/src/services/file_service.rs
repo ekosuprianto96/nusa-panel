@@ -3,7 +3,7 @@
 //! Business logic untuk file management operations.
 //! WARNING: File operations harus selalu di-sandbox ke user home directory!
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use std::fs::{self, Metadata};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -12,11 +12,12 @@ use validator::Validate;
 use crate::config::CONFIG;
 use crate::errors::{ApiError, ApiResult};
 use crate::models::{
-    permissions_to_octal, permissions_to_string, ChangePermissionsRequest, CompressRequest,
+    permissions_to_octal, permissions_to_string,
     CopyRequest, CreateFileRequest, DeleteRequest, FileContentResponse, FileInfo, FileListResponse,
-    FileType, MoveRequest, ReadFileRequest, RenameRequest, WriteFileRequest,
+    FileType, MoveRequest, RenameRequest, WriteFileRequest,
     DANGEROUS_EXTENSIONS, TEXT_EXTENSIONS,
 };
+use crate::utils::system::ensure_directory;
 
 /// Service untuk file operations
 pub struct FileService;
@@ -29,13 +30,13 @@ impl FileService {
     fn get_user_base_path(username: &str) -> PathBuf {
         // Development: gunakan /tmp yang pasti writable
         // Production: gunakan CONFIG.file.user_home_base
-        #[cfg(debug_assertions)]
-        let base = "/tmp/nusa-panel-users";
+        // #[cfg(debug_assertions)]
+        // let base = "/tmp/nusa-panel-users";
         
-        #[cfg(not(debug_assertions))]
+        // #[cfg(not(debug_assertions))]
         let base = &CONFIG.file.user_home_base;
         
-        PathBuf::from(base).join(username)
+        PathBuf::from(base).join(format!("user_{}", username))
     }
 
     /// Resolve dan validasi path
@@ -51,18 +52,25 @@ impl FileService {
     ///
     /// # Returns
     /// Absolute path yang sudah divalidasi
-    fn resolve_path(user_id: &str, relative_path: &str) -> ApiResult<PathBuf> {
-        let base_path = Self::get_user_base_path(user_id);
+    fn resolve_path(username: &str, relative_path: &str) -> ApiResult<PathBuf> {
+        let base_path = Self::get_user_base_path(username);
 
-        tracing::debug!("Resolving path for user {}: base_path={:?}, relative_path={}", user_id, base_path, relative_path);
+        tracing::debug!("Resolving path for user {}: base_path={:?}, relative_path={}", username, base_path, relative_path);
 
         // Ensure user home directory exists
         if !base_path.exists() {
             tracing::info!("User home directory does not exist, creating: {:?}", base_path);
-            fs::create_dir_all(&base_path).map_err(|e| {
-                tracing::error!("Failed to create user home directory {:?} for user {}: {} (kind: {:?})", base_path, user_id, e, e.kind());
-                ApiError::InternalError(format!("Failed to create user directory: {} at {:?}", e, base_path))
+            
+            // Convert PathBuf to str for command
+            let path_str = base_path.to_string_lossy();
+            
+            // Create user home with correct ownership (using system user)
+            // Function ensure_directory uses sudo mkdir
+            ensure_directory(&path_str, username).map_err(|e| {
+                tracing::error!("Failed to create user home directory {:?} for user {}: {}", base_path, username, e);
+                e
             })?;
+            
             tracing::info!("Created user home directory: {:?}", base_path);
         }
 
@@ -77,7 +85,7 @@ impl FileService {
         if clean_path.contains("..") {
             tracing::warn!(
                 "Path traversal attempt detected for user {}: {}",
-                user_id,
+                username,
                 relative_path
             );
             return Err(ApiError::FilePermissionDenied);
@@ -103,7 +111,7 @@ impl FileService {
             if !canonical_full.starts_with(&canonical_base) {
                 tracing::warn!(
                     "Path escape attempt for user {}: {}",
-                    user_id,
+                    username,
                     relative_path
                 );
                 return Err(ApiError::FilePermissionDenied);
@@ -391,7 +399,7 @@ impl FileService {
 
     /// Read file content
     pub async fn read_file(user_id: &str, path: &str) -> ApiResult<FileContentResponse> {
-        let base_path = Self::get_user_base_path(user_id);
+        let _base_path = Self::get_user_base_path(user_id);
         let full_path = Self::resolve_path(user_id, path)?;
 
         if !full_path.exists() {

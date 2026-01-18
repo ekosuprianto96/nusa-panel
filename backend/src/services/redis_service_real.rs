@@ -19,8 +19,8 @@ pub struct RedisServiceReal;
 
 impl RedisServiceReal {
     /// Helper to get system username
-    fn get_system_username(user_id: &str) -> String {
-        format!("user_{}", user_id.replace("-", "").chars().take(8).collect::<String>())
+    fn get_system_username(username: &str) -> String {
+        format!("user_{}", username)
     }
 
     /// Enable Redis for user (Real)

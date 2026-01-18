@@ -109,7 +109,7 @@ pub async fn create_backup(
     request: Json<CreateBackupRequest>,
 ) -> ApiResult<Json<ApiResponse<SystemBackup>>> {
     let backup =
-        SystemService::create_backup(db.get_pool(), &user.id, request.into_inner()).await?;
+        SystemService::create_backup(db.get_pool(), &user.id, &user.username, request.into_inner()).await?;
     Ok(success(backup))
 }
 

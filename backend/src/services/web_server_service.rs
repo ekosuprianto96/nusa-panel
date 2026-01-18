@@ -7,8 +7,6 @@ use chrono::Utc;
 use sqlx::MySqlPool;
 use uuid::Uuid;
 use validator::Validate;
-
-use crate::config::CONFIG;
 use crate::errors::{ApiError, ApiResult};
 use crate::models::{
     CreateVirtualHostRequest, Domain, PackageSpecs, PhpVersion, RequestSslRequest,

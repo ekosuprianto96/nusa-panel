@@ -13,6 +13,7 @@ use crate::guards::AuthenticatedUser;
 use crate::models::{
     CreateDnsRecordRequest, CreateDomainRequest, CreateSubdomainRequest, DnsRecordResponse,
     DomainResponse, SubdomainResponse, UpdateDnsRecordRequest, UpdateDomainRequest,
+    CreateRedirectRequest, CreateAliasRequest, DomainAlias, Redirect,
 };
 use crate::services::DomainService;
 use crate::utils::response::{paginated, success, success_message, ApiResponse, PaginatedResponse};
@@ -319,6 +320,96 @@ pub async fn delete_dns_record(
     Ok(success_message("DNS record berhasil dihapus"))
 }
 
+// ==========================================
+// REDIRECT ENDPOINTS
+// ==========================================
+
+/// List redirects for a domain
+#[get("/<domain_id>/redirects")]
+pub async fn list_redirects(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+) -> ApiResult<Json<ApiResponse<Vec<Redirect>>>> {
+    let redirects = DomainService::get_redirects(db.get_pool(), domain_id, &user.id).await?;
+    Ok(success(redirects))
+}
+
+/// Create redirect
+#[post("/<domain_id>/redirects", format = "json", data = "<request>")]
+pub async fn create_redirect(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+    request: Json<CreateRedirectRequest>,
+) -> ApiResult<Json<ApiResponse<Redirect>>> {
+    let redirect = DomainService::create_redirect(
+        db.get_pool(),
+        domain_id,
+        &user.id,
+        request.into_inner(),
+    )
+    .await?;
+    Ok(success(redirect))
+}
+
+/// Delete redirect
+#[delete("/<domain_id>/redirects/<redirect_id>")]
+pub async fn delete_redirect(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+    redirect_id: &str,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    DomainService::delete_redirect(db.get_pool(), domain_id, redirect_id, &user.id).await?;
+    Ok(success_message("Redirect berhasil dihapus"))
+}
+
+// ==========================================
+// ALIAS ENDPOINTS
+// ==========================================
+
+/// List aliases for a domain
+#[get("/<domain_id>/aliases")]
+pub async fn list_aliases(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+) -> ApiResult<Json<ApiResponse<Vec<DomainAlias>>>> {
+    let aliases = DomainService::get_aliases(db.get_pool(), domain_id, &user.id).await?;
+    Ok(success(aliases))
+}
+
+/// Create alias
+#[post("/<domain_id>/aliases", format = "json", data = "<request>")]
+pub async fn create_alias(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+    request: Json<CreateAliasRequest>,
+) -> ApiResult<Json<ApiResponse<DomainAlias>>> {
+    let alias = DomainService::create_alias(
+        db.get_pool(),
+        domain_id,
+        &user.id,
+        request.into_inner(),
+    )
+    .await?;
+    Ok(success(alias))
+}
+
+/// Delete alias
+#[delete("/<domain_id>/aliases/<alias_id>")]
+pub async fn delete_alias(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+    alias_id: &str,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    DomainService::delete_alias(db.get_pool(), domain_id, alias_id, &user.id).await?;
+    Ok(success_message("Alias berhasil dihapus"))
+}
+
 /// Mendapatkan routes untuk domains
 pub fn domain_routes() -> Vec<Route> {
     routes![
@@ -336,6 +427,14 @@ pub fn domain_routes() -> Vec<Route> {
         list_dns_records,
         create_dns_record,
         update_dns_record,
-        delete_dns_record
+        delete_dns_record,
+        // Redirects
+        list_redirects,
+        create_redirect,
+        delete_redirect,
+        // Aliases
+        list_aliases,
+        create_alias,
+        delete_alias
     ]
 }

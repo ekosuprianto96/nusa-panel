@@ -11,7 +11,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::errors::{ApiError, ApiResult};
-use crate::models::{EnableRedisRequest, RedisInstance, RedisInstanceResponse, UpdateRedisRequest};
+use crate::models::{EnableRedisRequest, RedisInstance, RedisInstanceResponse};
 
 pub struct RedisService;
 
@@ -41,7 +41,7 @@ impl RedisService {
         pool: &MySqlPool,
         user_id: &str,
         request: EnableRedisRequest,
-    ) -> ApiResult<RedisInstanceResponse> {
+    ) -> ApiResult <RedisInstanceResponse> {
         // 1. Check if already exists
         let existing = Self::get_status(pool, user_id).await?;
         if existing.is_some() {

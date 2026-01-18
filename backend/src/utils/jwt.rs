@@ -62,7 +62,7 @@ pub struct Claims {
 #[derive(Debug)]
 pub struct TokenPayload {
     /// User ID
-    pub user_id: Uuid,
+    pub user_id: String,
     /// Username
     pub username: String,
     /// Email
@@ -264,7 +264,7 @@ mod tests {
 
     fn create_test_payload() -> TokenPayload {
         TokenPayload {
-            user_id: Uuid::new_v4(),
+            user_id: "u_test".to_string(),
             username: "testuser".to_string(),
             email: "test@example.com".to_string(),
             role: "user".to_string(),

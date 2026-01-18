@@ -5,7 +5,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 use validator::Validate;
 
 /// Role user dalam sistem
