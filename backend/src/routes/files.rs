@@ -11,11 +11,23 @@ use crate::database::Database;
 use crate::errors::ApiResult;
 use crate::guards::AuthenticatedUser;
 use crate::models::{
-    CopyRequest, CreateFileRequest, DeleteRequest, FileContentResponse, FileInfo,
-    FileListResponse, MoveRequest, RenameRequest, WriteFileRequest,
+    CompressRequest, CopyRequest, CreateFileRequest, DeleteRequest, ExtractRequest,
+    FileContentResponse, FileInfo, FileListResponse, MoveRequest, RenameRequest, WriteFileRequest,
 };
 use crate::services::FileService;
 use crate::utils::response::{success, success_message, ApiResponse};
+
+/// Query parameters untuk search files
+#[derive(Debug, Deserialize, FromForm)]
+pub struct SearchFilesParams {
+    /// Query pencarian
+    pub query: String,
+    /// Path untuk memulai pencarian
+    pub path: Option<String>,
+    /// Maximum hasil
+    #[field(default = 50)]
+    pub limit: usize,
+}
 
 /// Query parameters untuk list files
 #[derive(Debug, Deserialize, FromForm)]
@@ -211,6 +223,85 @@ pub async fn delete_file(
     Ok(success_message("File/directory berhasil dihapus"))
 }
 
+// ==========================================
+// COMPRESS & EXTRACT ENDPOINTS
+// ==========================================
+
+/// Compress files/directories ke zip archive
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Request Body
+/// ```json
+/// {
+///   "paths": ["/path/to/file1", "/path/to/folder"],
+///   "archive_name": "backup",
+///   "format": "zip"
+/// }
+/// ```
+#[post("/compress", format = "json", data = "<request>")]
+pub async fn compress_files(
+    _db: &State<Database>,
+    user: AuthenticatedUser,
+    request: Json<CompressRequest>,
+) -> ApiResult<Json<ApiResponse<FileInfo>>> {
+    let file = FileService::compress(&user.username, request.into_inner()).await?;
+    Ok(success(file))
+}
+
+/// Extract zip archive
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Request Body
+/// ```json
+/// {
+///   "archive_path": "/path/to/archive.zip",
+///   "destination": "/path/to/extract",
+///   "overwrite": false
+/// }
+/// ```
+#[post("/extract", format = "json", data = "<request>")]
+pub async fn extract_archive(
+    _db: &State<Database>,
+    user: AuthenticatedUser,
+    request: Json<ExtractRequest>,
+) -> ApiResult<Json<ApiResponse<FileInfo>>> {
+    let file = FileService::extract(&user.username, request.into_inner()).await?;
+    Ok(success(file))
+}
+
+// ==========================================
+// SEARCH ENDPOINT
+// ==========================================
+
+/// Search files by name
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Query Parameters
+/// - query: Search query string
+/// - path: Optional path to start search from
+/// - limit: Maximum results (default 50)
+#[get("/search?<params..>")]
+pub async fn search_files(
+    _db: &State<Database>,
+    user: AuthenticatedUser,
+    params: SearchFilesParams,
+) -> ApiResult<Json<ApiResponse<Vec<FileInfo>>>> {
+    let results = FileService::search(
+        &user.username,
+        &params.query,
+        params.path.as_deref(),
+        Some(params.limit),
+    )
+    .await?;
+    Ok(success(results))
+}
+
 /// Mendapatkan routes untuk files
 pub fn file_routes() -> Vec<Route> {
     routes![
@@ -221,6 +312,9 @@ pub fn file_routes() -> Vec<Route> {
         rename_file,
         copy_file,
         move_file,
-        delete_file
+        delete_file,
+        compress_files,
+        extract_archive,
+        search_files
     ]
 }

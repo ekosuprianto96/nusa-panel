@@ -3,15 +3,20 @@
  * FileManagerLayout - Layout khusus untuk File Manager standalone
  * Memiliki slim sidebar dengan icon-only navigation
  */
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import ThemeToggle from '@/components/ui/ThemeToggle.vue'
+import FtpAccountsPanel from '@/components/files/FtpAccountsPanel.vue'
 import { 
-  Home, Folder, Terminal, Settings, LogOut
+  Home, Folder, Server, Settings, LogOut
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
+
+/** FTP Panel visibility */
+const showFtpPanel = ref(false)
 
 /**
  * Handle logout user
@@ -29,12 +34,20 @@ const goToDashboard = (): void => {
 }
 
 /**
+ * Open FTP Panel
+ */
+const openFtpPanel = (): void => {
+  showFtpPanel.value = true
+}
+
+/**
  * Sidebar navigation items
+ * Terminal menu dihapus - diakses dari Dashboard
  */
 const sidebarItems = [
   { name: 'Home', icon: Home, action: goToDashboard, active: false },
   { name: 'Files', icon: Folder, action: () => {}, active: true },
-  { name: 'Terminal', icon: Terminal, action: () => {}, active: false },
+  { name: 'FTP', icon: Server, action: openFtpPanel, active: false },
   { name: 'Settings', icon: Settings, action: () => {}, active: false },
 ]
 </script>
@@ -92,6 +105,12 @@ const sidebarItems = [
     <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
       <slot />
     </main>
+
+    <!-- FTP Panel -->
+    <FtpAccountsPanel 
+      :visible="showFtpPanel" 
+      @close="showFtpPanel = false" 
+    />
   </div>
 </template>
 

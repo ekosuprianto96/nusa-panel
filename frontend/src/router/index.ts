@@ -37,6 +37,24 @@ const router = createRouter({
             component: () => import('@/pages/files/FileManagerPage.vue'),
         },
         {
+            path: '/dashboard/files/upload',
+            name: 'FileUpload',
+            meta: {
+                requiresAuth: true,
+                title: 'Upload Files',
+            },
+            component: () => import('@/pages/files/UploadPage.vue'),
+        },
+        {
+            path: '/dashboard/files/editor',
+            name: 'TextEditor',
+            meta: {
+                requiresAuth: true,
+                title: 'Text Editor',
+            },
+            component: () => import('@/pages/files/TextEditorPage.vue'),
+        },
+        {
             path: '/dashboard/domains',
             name: 'Domains',
             meta: {

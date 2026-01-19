@@ -19,6 +19,7 @@ impl AppInstallerService {
     /// Main Entrypoint Install App
     pub async fn install_app(
         pool: &MySqlPool,
+        username: &str,
         user_id: &str,
         request: InstallAppRequest,
     ) -> ApiResult<InstallAppResponse> {
@@ -36,7 +37,7 @@ impl AppInstallerService {
         }
 
         // 2. Determine Install Path
-        let system_username = format!("user_{}", user_id.replace("-", "").chars().take(8).collect::<String>());
+        let system_username = format!("user_{}", username);
         let mut target_dir = format!("/home/{}/public_html", system_username);
         
         if let Some(subpath) = &request.install_path {

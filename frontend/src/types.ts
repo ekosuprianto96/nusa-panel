@@ -93,6 +93,7 @@ export interface FileListResponse {
     items: FileInfo[];
     total_items: number;
     total_size: number;
+    files: FileInfo[];
 }
 
 export interface FileContentResponse {

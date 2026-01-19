@@ -110,6 +110,7 @@ async fn rocket() -> _ {
         .mount("/api/system", routes::system_routes())
         .mount("/api/apps", routes::app_routes())
         .mount("/api/redis", routes::redis_routes())
+        .mount("/api/nodejs", routes::nodejs_routes())
         // Serve Static Files for Frontend
         .mount("/", FileServer::from(&frontend_path))
         // Frontend

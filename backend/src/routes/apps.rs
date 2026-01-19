@@ -39,7 +39,7 @@ pub async fn install_app(
     request: Json<InstallAppRequest>,
 ) -> ApiResult<Json<ApiResponse<InstallAppResponse>>> {
     let result =
-        AppInstallerService::install_app(db.get_pool(), &user.id, request.into_inner()).await?;
+        AppInstallerService::install_app(db.get_pool(), &user.username, &user.id, request.into_inner()).await?;
     Ok(success(result))
 }
 

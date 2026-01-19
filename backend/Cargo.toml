@@ -48,6 +48,8 @@ once_cell = "1.18"
 regex = "1.10"
 base64 = "0.22"
 sysinfo = "0.37.2"
+zip = "2.2"
+walkdir = "2.5"
 
 # Security - Rate Limiting (optional untuk production)
 # governor = "0.6"

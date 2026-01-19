@@ -5,17 +5,20 @@
 
 use chrono::{TimeZone, Utc};
 use std::fs::{self, Metadata};
-use std::io::{Read, Write};
+use std::io::{Read, Write, Seek};
 use std::path::{Path, PathBuf};
 use validator::Validate;
+use walkdir::WalkDir;
+use zip::write::SimpleFileOptions;
+use zip::{ZipArchive, ZipWriter};
 
 use crate::config::CONFIG;
 use crate::errors::{ApiError, ApiResult};
 use crate::models::{
     permissions_to_octal, permissions_to_string,
-    CopyRequest, CreateFileRequest, DeleteRequest, FileContentResponse, FileInfo, FileListResponse,
-    FileType, MoveRequest, RenameRequest, WriteFileRequest,
-    DANGEROUS_EXTENSIONS, TEXT_EXTENSIONS,
+    CompressRequest, CopyRequest, CreateFileRequest, DeleteRequest, ExtractRequest,
+    FileContentResponse, FileInfo, FileListResponse, FileType, MoveRequest, RenameRequest,
+    WriteFileRequest, DANGEROUS_EXTENSIONS, TEXT_EXTENSIONS,
 };
 use crate::utils::system::ensure_directory;
 
@@ -724,5 +727,351 @@ impl FileService {
         );
 
         Ok(Self::build_file_info(&dest_path, &metadata, &base_path))
+    }
+
+    // ==========================================
+    // COMPRESS & EXTRACT OPERATIONS
+    // ==========================================
+
+    /// Compress files/directories ke zip archive
+    ///
+    /// # Arguments
+    /// * `user_id` - ID user
+    /// * `request` - Data files yang akan di-compress
+    ///
+    /// # Returns
+    /// FileInfo dari archive yang dibuat
+    pub async fn compress(user_id: &str, request: CompressRequest) -> ApiResult<FileInfo> {
+        request
+            .validate()
+            .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+        if request.paths.is_empty() {
+            return Err(ApiError::ValidationError(
+                "Minimal harus ada satu file untuk di-compress".to_string(),
+            ));
+        }
+
+        let base_path = Self::get_user_base_path(user_id);
+
+        // Determine output path
+        let archive_name = if request.archive_name.ends_with(".zip") {
+            request.archive_name.clone()
+        } else {
+            format!("{}.zip", request.archive_name)
+        };
+
+        // Use parent of first file as output location
+        let first_path = Self::resolve_path(user_id, &request.paths[0])?;
+        let output_dir = first_path
+            .parent()
+            .unwrap_or(&base_path)
+            .to_path_buf();
+        let archive_path = output_dir.join(&archive_name);
+
+        // Check if archive already exists
+        if archive_path.exists() {
+            return Err(ApiError::AlreadyExists(archive_name));
+        }
+
+        // Create zip file
+        let zip_file = fs::File::create(&archive_path).map_err(|e| {
+            tracing::error!("Failed to create zip file: {}", e);
+            ApiError::InternalError("Gagal membuat file archive".to_string())
+        })?;
+
+        let mut zip = ZipWriter::new(zip_file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        // Add each path to archive
+        for path_str in &request.paths {
+            let source_path = Self::resolve_path(user_id, path_str)?;
+
+            if !source_path.exists() {
+                return Err(ApiError::FileNotFound(path_str.clone()));
+            }
+
+            if source_path.is_file() {
+                // Add single file
+                let file_name = source_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file");
+
+                zip.start_file(file_name, options).map_err(|e| {
+                    tracing::error!("Failed to add file to zip: {}", e);
+                    ApiError::InternalError("Gagal menambahkan file ke archive".to_string())
+                })?;
+
+                let mut file = fs::File::open(&source_path).map_err(|_| {
+                    ApiError::FilePermissionDenied
+                })?;
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer).map_err(|_| {
+                    ApiError::FilePermissionDenied
+                })?;
+
+                zip.write_all(&buffer).map_err(|e| {
+                    tracing::error!("Failed to write to zip: {}", e);
+                    ApiError::InternalError("Gagal menulis ke archive".to_string())
+                })?;
+            } else if source_path.is_dir() {
+                // Add directory recursively
+                let base_name = source_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("folder");
+
+                for entry in WalkDir::new(&source_path) {
+                    let entry = entry.map_err(|e| {
+                        tracing::error!("Failed to walk directory: {}", e);
+                        ApiError::FilePermissionDenied
+                    })?;
+
+                    let entry_path = entry.path();
+                    let relative_path = entry_path
+                        .strip_prefix(&source_path)
+                        .map_err(|_| ApiError::FilePermissionDenied)?;
+
+                    let archive_path_name = if relative_path.as_os_str().is_empty() {
+                        base_name.to_string()
+                    } else {
+                        format!("{}/{}", base_name, relative_path.to_string_lossy())
+                    };
+
+                    if entry_path.is_dir() {
+                        zip.add_directory(&archive_path_name, options).map_err(|e| {
+                            tracing::error!("Failed to add directory to zip: {}", e);
+                            ApiError::InternalError("Gagal menambahkan folder ke archive".to_string())
+                        })?;
+                    } else {
+                        zip.start_file(&archive_path_name, options).map_err(|e| {
+                            tracing::error!("Failed to start file in zip: {}", e);
+                            ApiError::InternalError("Gagal menambahkan file ke archive".to_string())
+                        })?;
+
+                        let mut file = fs::File::open(entry_path).map_err(|_| {
+                            ApiError::FilePermissionDenied
+                        })?;
+                        let mut buffer = Vec::new();
+                        file.read_to_end(&mut buffer).map_err(|_| {
+                            ApiError::FilePermissionDenied
+                        })?;
+
+                        zip.write_all(&buffer).map_err(|e| {
+                            tracing::error!("Failed to write to zip: {}", e);
+                            ApiError::InternalError("Gagal menulis ke archive".to_string())
+                        })?;
+                    }
+                }
+            }
+        }
+
+        zip.finish().map_err(|e| {
+            tracing::error!("Failed to finish zip: {}", e);
+            ApiError::InternalError("Gagal menyelesaikan archive".to_string())
+        })?;
+
+        let metadata = fs::metadata(&archive_path).map_err(|_| {
+            ApiError::InternalError("Gagal membaca metadata archive".to_string())
+        })?;
+
+        tracing::info!(
+            "Files compressed to {} by user {}",
+            archive_name,
+            user_id
+        );
+
+        Ok(Self::build_file_info(&archive_path, &metadata, &base_path))
+    }
+
+    /// Extract zip archive
+    ///
+    /// # Arguments
+    /// * `user_id` - ID user
+    /// * `request` - Data archive dan destination
+    ///
+    /// # Returns
+    /// FileInfo dari destination directory
+    pub async fn extract(user_id: &str, request: ExtractRequest) -> ApiResult<FileInfo> {
+        request
+            .validate()
+            .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+        let base_path = Self::get_user_base_path(user_id);
+        let archive_path = Self::resolve_path(user_id, &request.archive_path)?;
+        let dest_path = Self::resolve_path(user_id, &request.destination)?;
+
+        // Check archive exists
+        if !archive_path.exists() {
+            return Err(ApiError::FileNotFound(request.archive_path.clone()));
+        }
+
+        // Check it's a file
+        if !archive_path.is_file() {
+            return Err(ApiError::ValidationError(
+                "Path bukan file archive".to_string(),
+            ));
+        }
+
+        // Create destination directory if needed
+        if !dest_path.exists() {
+            fs::create_dir_all(&dest_path).map_err(|e| {
+                tracing::error!("Failed to create destination directory: {}", e);
+                ApiError::InternalError("Gagal membuat direktori tujuan".to_string())
+            })?;
+        }
+
+        // Open and extract zip
+        let zip_file = fs::File::open(&archive_path).map_err(|_| {
+            ApiError::FilePermissionDenied
+        })?;
+
+        let mut archive = ZipArchive::new(zip_file).map_err(|e| {
+            tracing::error!("Failed to open zip archive: {}", e);
+            ApiError::ValidationError("File bukan archive zip yang valid".to_string())
+        })?;
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| {
+                tracing::error!("Failed to read archive entry: {}", e);
+                ApiError::InternalError("Gagal membaca isi archive".to_string())
+            })?;
+
+            let outpath = match file.enclosed_name() {
+                Some(path) => dest_path.join(path),
+                None => continue,
+            };
+
+            // Check if extracted path is within destination (security)
+            if !outpath.starts_with(&dest_path) {
+                tracing::warn!(
+                    "Zip extraction attempted path traversal: {:?}",
+                    outpath
+                );
+                continue;
+            }
+
+            // Check if should overwrite
+            if outpath.exists() && !request.overwrite.unwrap_or(false) {
+                continue;
+            }
+
+            if file.is_dir() {
+                fs::create_dir_all(&outpath).map_err(|e| {
+                    tracing::error!("Failed to create directory: {}", e);
+                    ApiError::InternalError("Gagal membuat direktori".to_string())
+                })?;
+            } else {
+                // Ensure parent directory exists
+                if let Some(parent) = outpath.parent() {
+                    if !parent.exists() {
+                        fs::create_dir_all(parent).map_err(|e| {
+                            tracing::error!("Failed to create parent directory: {}", e);
+                            ApiError::InternalError("Gagal membuat direktori".to_string())
+                        })?;
+                    }
+                }
+
+                let mut outfile = fs::File::create(&outpath).map_err(|e| {
+                    tracing::error!("Failed to create output file: {}", e);
+                    ApiError::FilePermissionDenied
+                })?;
+
+                std::io::copy(&mut file, &mut outfile).map_err(|e| {
+                    tracing::error!("Failed to write output file: {}", e);
+                    ApiError::InternalError("Gagal menulis file".to_string())
+                })?;
+
+                // Set permissions on Unix
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Some(mode) = file.unix_mode() {
+                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).ok();
+                    }
+                }
+            }
+        }
+
+        let metadata = fs::metadata(&dest_path).map_err(|_| {
+            ApiError::InternalError("Gagal membaca metadata".to_string())
+        })?;
+
+        tracing::info!(
+            "Archive extracted: {} -> {} by user {}",
+            request.archive_path,
+            request.destination,
+            user_id
+        );
+
+        Ok(Self::build_file_info(&dest_path, &metadata, &base_path))
+    }
+
+    // ==========================================
+    // SEARCH OPERATIONS
+    // ==========================================
+
+    /// Search files by name
+    ///
+    /// # Arguments
+    /// * `user_id` - ID user
+    /// * `query` - Search query string
+    /// * `path` - Optional path to start search from
+    /// * `max_results` - Maximum results to return (default 50)
+    ///
+    /// # Returns
+    /// Vector of matching FileInfo
+    pub async fn search(
+        user_id: &str,
+        query: &str,
+        path: Option<&str>,
+        max_results: Option<usize>,
+    ) -> ApiResult<Vec<FileInfo>> {
+        if query.trim().is_empty() {
+            return Err(ApiError::ValidationError(
+                "Query pencarian tidak boleh kosong".to_string(),
+            ));
+        }
+
+        let base_path = Self::get_user_base_path(user_id);
+        let search_path = Self::resolve_path(user_id, path.unwrap_or(""))?;
+        let max = max_results.unwrap_or(50).min(100); // Cap at 100
+
+        let query_lower = query.to_lowercase();
+        let mut results = Vec::new();
+
+        for entry in WalkDir::new(&search_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if results.len() >= max {
+                break;
+            }
+
+            let entry_path = entry.path();
+            let file_name = entry_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+
+            // Match filename (case-insensitive)
+            if file_name.to_lowercase().contains(&query_lower) {
+                if let Ok(metadata) = entry.metadata() {
+                    results.push(Self::build_file_info(entry_path, &metadata, &base_path));
+                }
+            }
+        }
+
+        tracing::info!(
+            "Search '{}' found {} results for user {}",
+            query,
+            results.len(),
+            user_id
+        );
+
+        Ok(results)
     }
 }
