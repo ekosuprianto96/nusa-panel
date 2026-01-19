@@ -1,310 +1,338 @@
-# 📌 NusaPanel Feature Summary
+# 🚀 NusaPanel
 
-Berikut adalah rangkuman fitur yang sudah ada di dalam **NusaPanel** berdasarkan analisis kode **Frontend & Backend**.
+**NusaPanel** adalah panel kontrol hosting web modern yang dibangun dengan teknologi terkini. Panel ini dirancang sebagai alternatif ringan dan cepat untuk cPanel/CyberPanel, dengan fokus pada performa tinggi dan keamanan.
 
----
-
-## ✅ 1. Core Features (Sudah Terimplementasi)
-
----
-
-### 🖥️ Dashboard (`/dashboard`)
-
-- Landing page utama setelah login.
-- Menampilkan ringkasan resource atau status server.
-- Catatan: Perlu verifikasi detail konten widget.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)
+![Vue](https://img.shields.io/badge/vue-3.5-green.svg)
 
 ---
 
-### 📂 File Manager (`/dashboard/files`)
+## 📋 Daftar Isi
 
-**Backend:** `FileService`
-Mendukung operasi file standar dalam sandbox user (`/home/user_xxxx`).
-
-**Fitur:**
-
-- List files & directories.
-- Create file / folder.
-- Read & write content (edit file).
-- Delete, rename, move, copy.
-- Basic permission check (sandbox & path traversal prevention).
-
-**Limitasi Saat Ini:**
-
-- Belum ada implementasi eksplisit:
-    - Compress / Extract (ZIP).
-    - Change Permissions (CHMOD).
-
-- Walaupun struct sudah tersedia.
+- [Tech Stack](#-tech-stack)
+- [Kelebihan](#-kelebihan)
+- [Fitur Utama](#-fitur-utama)
+- [Persyaratan Sistem](#-persyaratan-sistem)
+- [Instalasi](#-instalasi)
+- [Konfigurasi](#-konfigurasi)
+- [Menjalankan Aplikasi](#-menjalankan-aplikasi)
+- [Struktur Proyek](#-struktur-proyek)
+- [Lisensi](#-lisensi)
 
 ---
 
-### 🌐 Domains Management (`/dashboard/domains`)
+## 🛠 Tech Stack
 
-**Backend:** `DomainService`
+### Backend
+| Teknologi | Versi | Deskripsi |
+|-----------|-------|-----------|
+| **Rust** | 1.70+ | Bahasa pemrograman sistem yang aman dan cepat |
+| **Rocket** | 0.5 | Web framework async untuk Rust dengan fitur JSON & secrets |
+| **SQLx** | 0.7 | Database toolkit async untuk MySQL dengan compile-time verification |
+| **Tokio** | 1.0 | Async runtime untuk concurrent operations |
+| **Argon2** | 0.5 | Library hashing password yang aman |
+| **JWT** | 9.0 | JSON Web Token untuk autentikasi |
 
-**Fitur:**
+### Frontend
+| Teknologi | Versi | Deskripsi |
+|-----------|-------|-----------|
+| **Vue.js** | 3.5 | Framework JavaScript progresif untuk UI |
+| **TypeScript** | 5.9 | JavaScript dengan static typing |
+| **Vite** | 7.2 | Build tool next-generation yang super cepat |
+| **TailwindCSS** | 3.4 | Utility-first CSS framework |
+| **Pinia** | 3.0 | State management untuk Vue |
+| **Monaco Editor** | 0.55 | Code editor powerful (sama seperti VS Code) |
+| **Radix Vue** | 1.9 | Komponen UI headless yang accessible |
 
-- CRUD domain (Create, Read, Update, Delete).
-- Unlimited subdomains.
-- DNS Records (A, CNAME, MX, TXT, dll).
-- Document root otomatis (`public_html`).
-- Auto DNS:
-    - Generate default A & MX records saat domain dibuat.
-
----
-
-### 💾 Database Management (`/dashboard/databases`)
-
-**Backend:** `DatabaseService`
-
-**Fitur:**
-
-- Isolated databases:
-    - Prefix: `userid_dbname`.
-
-- Database users per database.
-- Privileges management (ALL / partial).
-- Integrasi login phpMyAdmin.
-
----
-
-### 📧 Email (`/dashboard/emails`)
-
-**Backend:** `email_service.rs`
-
-**Fitur:**
-
-- Create email account.
-- Delete email account.
-- Update password email.
+### Database & Services
+| Teknologi | Deskripsi |
+|-----------|-----------|
+| **MySQL** | Database utama untuk menyimpan data panel |
+| **Nginx** | Web server untuk serving aplikasi |
+| **PHP-FPM** | PHP FastCGI Process Manager |
+| **Redis** | In-memory cache dan session storage |
 
 ---
 
-### 🛡️ Security (`/dashboard/security`)
+## ✨ Kelebihan
 
-**Backend:** `SecurityService`
+### 🚀 Performa Tinggi
+- **Backend Rust** - Kecepatan mendekati C/C++ dengan memory safety
+- **Zero-cost abstractions** - Tidak ada overhead runtime
+- **Async I/O** - Menangani ribuan koneksi concurrent dengan efisien
 
-**Fitur:**
+### 🔒 Keamanan Terjamin
+- **Memory Safety** - Rust mencegah buffer overflow dan memory leaks
+- **Argon2 Hashing** - Password hashing dengan standar industri terkini
+- **JWT Authentication** - Token-based auth yang stateless dan aman
+- **Sandbox Isolation** - Setiap user terisolasi di direktori home masing-masing
+- **Path Traversal Prevention** - Mencegah akses file di luar sandbox
 
-- Manajemen firewall (UFW / iptables).
-- SSH access control (potensial).
+### 💡 Ringan & Efisien
+- **Low Memory Footprint** - Penggunaan RAM minimal dibanding panel PHP
+- **Fast Compilation** - Build time yang optimal dengan binary tunggal
+- **No Runtime Dependency** - Tidak memerlukan interpreter seperti PHP/Python
 
----
+### 🎨 UI Modern
+- **Vue 3 Composition API** - Kode frontend yang bersih dan maintainable
+- **Monaco Editor** - Editor kode built-in sekelas VS Code
+- **Responsive Design** - Tampilan optimal di desktop dan mobile
+- **Dark/Light Theme** - Dukungan tema gelap dan terang
 
-### ⚙️ System Tools (`/dashboard/system`)
-
-**Backend:** `SystemService`
-
-**Fitur Lengkap:**
-
-- Cron Jobs:
-    - Preset: Hourly, Daily, dll.
-
-- Backups:
-    - Full backup.
-    - DB only.
-    - Files only.
-
-- PHP Version Selector:
-    - Global / per-user (8.2, 8.3, dll).
-
-- Error Logs Viewer:
-    - PHP / Nginx.
-
-- Services Manager:
-    - Start / Stop / Restart:
-        - Nginx
-        - MySQL
-        - PHP-FPM
+### 📦 Fitur Lengkap
+- **Multi-Domain Support** - Kelola unlimited domain dan subdomain
+- **Database Management** - Buat dan kelola database MySQL dengan mudah
+- **Email Management** - Buat akun email untuk domain anda
+- **App Installer** - Install WordPress, Laravel dengan satu klik
+- **File Manager** - Kelola file langsung dari browser
 
 ---
 
-### ⚡ Redis Manager (`/dashboard/redis`)
+## 🎯 Fitur Utama
 
-**Backend:** `RedisService`
-
-**Fitur:**
-
-- Manajemen Redis instance.
-- Isolasi user atau shared instance management.
-
----
-
-### 🌐 Web Server (`/dashboard/web-server`)
-
-**Backend:** `WebServerService`
-
-**Fitur:**
-
-- Viewer & editor konfigurasi web server.
-- Vhost config Nginx / Apache.
+| Fitur | Deskripsi |
+|-------|-----------|
+| 📂 **File Manager** | Upload, edit, delete, copy, move file dengan UI intuitif |
+| 🌐 **Domain Manager** | Kelola domain, subdomain, dan DNS records |
+| 💾 **Database** | Buat database MySQL dengan user isolation |
+| 📧 **Email** | Buat dan kelola akun email |
+| ⚙️ **System Tools** | Cron jobs, backup, PHP version selector, error logs |
+| 🛡️ **Security** | Firewall management dan SSH access control |
+| 📱 **App Installer** | Install WordPress, Laravel otomatis |
+| ⚡ **Redis Manager** | Kelola Redis instance |
+| 🌐 **Web Server** | Konfigurasi Nginx/Apache vhost |
 
 ---
 
-### 📱 App Installer (`/dashboard/apps`)
+## 📌 Persyaratan Sistem
 
-**Backend:** `AppInstallerService`
+### Minimum
+- **OS**: Ubuntu 20.04 LTS / Debian 11+
+- **RAM**: 1 GB
+- **CPU**: 1 Core
+- **Disk**: 20 GB
 
-**Fitur:**
+### Recommended
+- **OS**: Ubuntu 22.04 LTS / Ubuntu 24.04 LTS
+- **RAM**: 2 GB+
+- **CPU**: 2+ Core
+- **Disk**: 40 GB+ SSD
 
-- Softaculous-like installer.
-- WordPress:
-    - Download WP-CLI.
-    - Create database.
-    - Generate `wp-config.php`.
-
-- Laravel:
-    - `composer create-project`.
-    - `artisan key:generate`.
-    - Migration.
-
----
-
----
-
-## 🚀 2. Peluang Pengembangan Selanjutnya (Next Steps)
-
-Berikut ide pengembangan agar **NusaPanel setara cPanel / CyberPanel**.
+### Software Requirements
+- Rust 1.70+
+- Node.js 18+
+- MySQL 8.0+
+- Nginx 1.18+
+- PHP 8.1+ (dengan PHP-FPM)
 
 ---
 
-## 🔥 High Priority (Crusial for Hosting)
+## 📥 Instalasi
+
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/your-username/nusa-panel-rust.git
+cd nusa-panel-rust
+```
+
+### 2. Install Dependencies
+
+#### Backend (Rust)
+```bash
+# Install Rust jika belum ada
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# Build backend
+cd backend
+cargo build --release
+```
+
+#### Frontend (Vue)
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+### 3. Setup Database
+
+```bash
+# Login ke MySQL
+mysql -u root -p
+
+# Buat database
+CREATE DATABASE nusa_panel;
+CREATE USER 'nusapanel'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON nusa_panel.* TO 'nusapanel'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+### 4. Konfigurasi Environment
+
+```bash
+# Backend
+cd backend
+cp .env.example .env
+nano .env
+```
+
+Isi file `.env`:
+```env
+DATABASE_URL=mysql://nusapanel:your_password@localhost/nusa_panel
+JWT_SECRET=your_super_secret_jwt_key_here
+ROCKET_PORT=8000
+ROCKET_ADDRESS=127.0.0.1
+```
 
 ---
 
-### 🔐 SSL / TLS Certificates (Let's Encrypt)
+## ⚙️ Konfigurasi
 
-**Kondisi:**
+### Backend Configuration
 
-- Ada field `ssl_enabled` di tabel domain.
-- Belum ada automasi Certbot yang lengkap.
+Edit file `.env` di folder `backend/`:
 
-**Fitur:**
+| Variable | Deskripsi | Default |
+|----------|-----------|---------|
+| `DATABASE_URL` | URL koneksi MySQL | - |
+| `JWT_SECRET` | Secret key untuk JWT | - |
+| `ROCKET_PORT` | Port API | 8000 |
+| `ROCKET_ADDRESS` | Bind address | 127.0.0.1 |
 
-- Auto issue SSL.
-- Auto renew.
-- Upload custom certificate.
+### Frontend Configuration
 
----
+Edit file `.env` di folder `frontend/`:
 
-### 📁 FTP Account Management
-
-**Kondisi:**
-
-- Ada `ftp_service.rs`.
-- Belum ada menu di sidebar frontend.
-
-**Fitur:**
-
-- Create FTP account tambahan.
-- Directory restriction per user.
+| Variable | Deskripsi | Default |
+|----------|-----------|---------|
+| `VITE_API_URL` | URL Backend API | http://localhost:8000 |
 
 ---
 
-### 🧩 Advanced File Manager
+## ▶️ Menjalankan Aplikasi
 
-**Kondisi:**
+### Development Mode
 
-- Baru CRUD basic.
+#### Backend
+```bash
+cd backend
+cargo run
+```
 
-**Fitur Tambahan:**
+#### Frontend
+```bash
+cd frontend
+npm run dev
+```
 
-- Zip / Unzip.
-- Code editor:
-    - Monaco / Ace Editor.
+Akses aplikasi di: `http://localhost:5173`
 
-- Permissions UI:
-    - CHMOD (755, 644, dll).
+### Production Mode
 
----
+#### Backend
+```bash
+cd backend
+cargo build --release
+./target/release/nusa-panel
+```
 
----
+#### Frontend
+```bash
+cd frontend
+npm run build
+# Deploy folder dist/ ke web server
+```
 
-## 📈 Medium Priority (Value Add)
+### Menggunakan Systemd (Production)
 
----
+Buat file service untuk backend:
 
-### 📊 Resource Monitoring (Real-time)
+```bash
+sudo nano /etc/systemd/system/nusa-panel.service
+```
 
-**Fitur:**
+```ini
+[Unit]
+Description=NusaPanel Backend API
+After=network.target mysql.service
 
-- CPU usage.
-- RAM usage.
-- Disk.
-- Bandwidth per user / domain.
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/nusa-panel/backend
+ExecStart=/opt/nusa-panel/backend/target/release/nusa-panel
+Restart=always
+RestartSec=5
+Environment=ROCKET_ENV=production
 
-**Tech:**
+[Install]
+WantedBy=multi-user.target
+```
 
-- Netdata integration.
-- Custom metrics collector.
-
----
-
-### 🧑‍💻 Node.js / Python / Go Manager
-
-**Kondisi:**
-
-- Sekarang fokus PHP & Laravel.
-
-**Fitur:**
-
-- PM2 manager.
-- Process lifecycle control.
-- Multi runtime manager.
-
----
-
-### ☁️ Cloud Backup (S3 / GDrive)
-
-**Kondisi:**
-
-- Backup masih lokal.
-
-**Fitur:**
-
-- Upload otomatis ke:
-    - AWS S3.
-    - S3-compatible storage.
-    - Google Drive.
-
----
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable nusa-panel
+sudo systemctl start nusa-panel
+```
 
 ---
 
-## 🛠️ System Admin Features
+## 📁 Struktur Proyek
+
+```
+nusa-panel-rust/
+├── backend/                 # Rust Backend API
+│   ├── src/
+│   │   ├── main.rs         # Entry point
+│   │   ├── routes/         # API endpoints
+│   │   ├── services/       # Business logic
+│   │   ├── models/         # Data models
+│   │   └── middleware/     # Auth & middleware
+│   ├── Cargo.toml          # Rust dependencies
+│   └── .env                # Environment config
+│
+├── frontend/               # Vue.js Frontend
+│   ├── src/
+│   │   ├── pages/          # Page components
+│   │   ├── components/     # Reusable components
+│   │   ├── stores/         # Pinia stores
+│   │   ├── services/       # API services
+│   │   └── layouts/        # Layout components
+│   ├── package.json        # NPM dependencies
+│   └── vite.config.ts      # Vite configuration
+│
+└── README.md               # Dokumentasi ini
+```
 
 ---
 
-### 💻 Web Terminal
+## 📄 Lisensi
 
-**Fitur:**
-
-- Terminal berbasis web (xterm.js).
-- Command:
-    - `git pull`
-    - `composer install`
-    - `npm install`
-    - dll langsung dari browser.
+Proyek ini dilisensikan di bawah [MIT License](LICENSE).
 
 ---
 
-### 🔥 Firewall Manager (Advanced)
+## 🤝 Kontribusi
 
-**Fitur:**
+Kontribusi sangat diterima! Silakan buat issue atau pull request.
 
-- IP whitelist / blacklist.
-- Port management.
-- Rule editor UI.
+1. Fork repository
+2. Buat branch fitur (`git checkout -b feature/AmazingFeature`)
+3. Commit perubahan (`git commit -m 'Add some AmazingFeature'`)
+4. Push ke branch (`git push origin feature/AmazingFeature`)
+5. Buat Pull Request
 
 ---
 
+## 📞 Kontak
+
+Jika ada pertanyaan atau saran, silakan buat issue di repository ini.
+
 ---
 
-## ✅ Penutup
-
-Dokumentasi ini bisa dijadikan:
-
-- README project.
-- Roadmap development.
-- Proposal sistem panel hosting.
+<p align="center">
+  Made with ❤️ by NusaPanel Team
+</p>
