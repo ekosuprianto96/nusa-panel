@@ -53,6 +53,17 @@ export const databaseService = {
 
     deleteDatabaseUser: (id: string) =>
         api.delete<ApiResponse<void>>(`/databases/users/${id}`),
+
+    // phpMyAdmin SSO
+    /**
+     * Generate signon token untuk SSO ke phpMyAdmin
+     * @param dbUserId ID database user yang akan di-SSO
+     * @returns URL untuk redirect ke phpMyAdmin dengan token
+     */
+    generateSignonToken: (dbUserId: string) =>
+        api.post<ApiResponse<{ signon_url: string; expires_in: number }>>(
+            `/phpmyadmin/signon/${dbUserId}`,
+        ),
 };
 
 export default databaseService;

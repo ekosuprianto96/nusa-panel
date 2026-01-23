@@ -125,6 +125,10 @@ pub struct DatabaseUser {
     #[serde(skip_serializing)]
     pub password_hash: String,
 
+    /// Password terenkripsi untuk SSO (tidak di-serialize)
+    #[serde(skip_serializing)]
+    pub password_encrypted: Option<String>,
+
     /// Hostname yang diizinkan (%, localhost, atau IP)
     pub host: String,
 

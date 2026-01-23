@@ -375,10 +375,33 @@ const formatSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const openPhpMyAdmin = (): void => {
-  // Open phpMyAdmin in new tab
-  // Default URL, change if production uses different path
-  window.open('http://localhost/phpmyadmin', '_blank')
+/**
+ * Open phpMyAdmin dengan SSO
+ * @param dbUserId ID database user untuk SSO
+ */
+const openPhpMyAdmin = async (dbUserId?: string): Promise<void> => {
+  if (!dbUserId) {
+    // Fallback ke phpMyAdmin tanpa SSO
+    window.open('/phpmyadmin', '_blank')
+    return
+  }
+  
+  try {
+    isLoading.value = true
+    error.value = null
+    const response = await databaseService.generateSignonToken(dbUserId)
+    
+    if (response.data.data?.signon_url) {
+      window.open(response.data.data.signon_url, '_blank')
+      showSuccess('Opening phpMyAdmin...')
+    } else {
+      error.value = 'Gagal mendapatkan SSO token'
+    }
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Gagal membuka phpMyAdmin'
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const generatePassword = (): void => {
@@ -562,7 +585,7 @@ onMounted(() => {
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                    <button @click="openPhpMyAdmin" class="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all" title="phpMyAdmin">
+                    <button @click="openPhpMyAdmin()" class="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all" title="phpMyAdmin">
                       <ExternalLink class="w-4 h-4" />
                     </button>
                     <button @click="openDeleteDb(db)" class="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all" title="Delete">
@@ -629,6 +652,14 @@ onMounted(() => {
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <button 
+                      v-if="dbUser.is_active && dbUser.db_name" 
+                      @click="openPhpMyAdmin(dbUser.id)" 
+                      class="p-2 text-muted-foreground hover:text-blue-600 hover:bg-blue-500/10 rounded-lg transition-all" 
+                      title="Open phpMyAdmin (SSO)"
+                    >
+                      <ExternalLink class="w-4 h-4" />
+                    </button>
                     <button @click="openChangePassword(dbUser)" class="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all" title="Change Password">
                       <Key class="w-4 h-4" />
                     </button>
