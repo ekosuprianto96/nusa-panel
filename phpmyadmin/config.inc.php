@@ -8,59 +8,51 @@
  * @author Nusa Panel Team
  */
 
-declare(strict_types=1);
-
-/**
- * Server configuration
- */
-$i = 0;
-$i++;
+// Use Server 1 directly
+$server = 1;
 
 // Authentication type: signon untuk SSO
-$cfg['Servers'][$i]['auth_type'] = 'signon';
+$cfg['Servers'][$server]['auth_type'] = 'signon';
 
 // Session name yang digunakan oleh signon.php
-$cfg['Servers'][$i]['SignonSession'] = 'NusaPanelSignonSession';
+$cfg['Servers'][$server]['SignonSession'] = 'NusaPanelSignonSession';
 
-// URL untuk redirect jika session expired
-$cfg['Servers'][$i]['SignonURL'] = getenv('PANEL_URL') ?: '/panel/databases';
+// URL untuk redirect jika session expired (Auth Required)
+$cfg['Servers'][$server]['SignonURL'] = getenv('PANEL_URL') ?: '/panel/databases';
 
 // Path ke script signon
-$cfg['Servers'][$i]['SignonScript'] = __DIR__ . '/signon.php';
+// WARNING: Defining SignonScript causes "Cannot use object as array" crash in PMA 5.2
+// Since we use SignonURL for redirection, we don't strictly need to include the script here 
+// as long as the external flow works.
+// $cfg['Servers'][$server]['SignonScript'] = '/usr/share/phpmyadmin/signon.php';
 
 // URL untuk logout - kembali ke panel
-$cfg['Servers'][$i]['LogoutURL'] = getenv('PANEL_URL') ?: '/panel/databases';
+$cfg['Servers'][$server]['LogoutURL'] = getenv('PANEL_URL') ?: '/panel/databases';
 
 // MySQL Server configuration
-$cfg['Servers'][$i]['host'] = getenv('MYSQL_HOST') ?: 'localhost';
-$cfg['Servers'][$i]['port'] = (int)(getenv('MYSQL_PORT') ?: 3306);
-$cfg['Servers'][$i]['socket'] = getenv('MYSQL_SOCKET') ?: '';
-$cfg['Servers'][$i]['compress'] = false;
-$cfg['Servers'][$i]['AllowNoPassword'] = false;
+$cfg['Servers'][$server]['host'] = getenv('MYSQL_HOST') ?: 'localhost';
+$cfg['Servers'][$server]['port'] = (int)(getenv('MYSQL_PORT') ?: 3306);
+$cfg['Servers'][$server]['socket'] = getenv('MYSQL_SOCKET') ?: '';
+$cfg['Servers'][$server]['compress'] = false;
+$cfg['Servers'][$server]['AllowNoPassword'] = false;
 
 // Connection type (socket lebih cepat untuk localhost)
-if (!empty($cfg['Servers'][$i]['socket'])) {
-    $cfg['Servers'][$i]['connect_type'] = 'socket';
+if (!empty($cfg['Servers'][$server]['socket'])) {
+    $cfg['Servers'][$server]['connect_type'] = 'socket';
 } else {
-    $cfg['Servers'][$i]['connect_type'] = 'tcp';
+    $cfg['Servers'][$server]['connect_type'] = 'tcp';
 }
 
 /**
  * Session settings
  */
-// Cookie validity in seconds (24 hours)
 $cfg['LoginCookieValidity'] = 86400;
-
-// Remember login dalam browser session
 $cfg['LoginCookieStore'] = 0;
-
-// Logout dari semua server sekaligus
 $cfg['LoginCookieDeleteAll'] = true;
 
 /**
  * Security settings
  */
-// Blowfish secret untuk cookie encryption
 $cfg['blowfish_secret'] = getenv('PMA_BLOWFISH_SECRET') 
     ?: 'change-this-to-your-secret-32chars';
 
@@ -72,16 +64,9 @@ $cfg['SaveDir'] = '';
 /**
  * UI Settings
  */
-// Theme
 $cfg['ThemeDefault'] = 'pmahomme';
-
-// Show database list on navigation panel
 $cfg['ShowDatabasesNavigationAsTree'] = true;
-
-// Maximum rows to display
 $cfg['MaxRows'] = 50;
-
-// Default language
 $cfg['DefaultLang'] = 'en';
 
 /**
@@ -94,10 +79,3 @@ $cfg['Import']['charset'] = 'utf-8';
  * Disable version check (untuk keamanan)
  */
 $cfg['VersionCheck'] = false;
-
-/**
- * Additional security
- */
-// Aktifkan untuk production
-// $cfg['CaptchaLoginPublicKey'] = '';
-// $cfg['CaptchaLoginPrivateKey'] = '';

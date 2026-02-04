@@ -3,12 +3,12 @@
 //! Route handlers untuk Module App Installer.
 
 use rocket::serde::json::Json;
-use rocket::{post, routes, Route, State};
+use rocket::{get, post, routes, Route, State};
 
 use crate::database::Database;
 use crate::errors::ApiResult;
-use crate::guards::AuthenticatedUser;
-use crate::models::{InstallAppRequest, InstallAppResponse};
+use crate::guards::{AuthenticatedUser, ResellerOrAdmin};
+use crate::models::{AppInstallationResponse, InstallAppRequest, InstallAppResponse};
 use crate::services::AppInstallerService;
 use crate::utils::response::{success, ApiResponse};
 
@@ -43,7 +43,37 @@ pub async fn install_app(
     Ok(success(result))
 }
 
+/// List installations untuk user saat ini
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+#[get("/installations")]
+pub async fn list_installations(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+) -> ApiResult<Json<ApiResponse<Vec<AppInstallationResponse>>>> {
+    let data = AppInstallerService::list_installations_by_user(db.get_pool(), &user.id).await?;
+    Ok(success(data))
+}
+
+/// List installations untuk user tertentu (Admin/Reseller)
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Path Parameters
+/// - user_id: User ID
+#[get("/admin/user/<user_id>/installations")]
+pub async fn list_installations_by_user_admin(
+    db: &State<Database>,
+    _admin: ResellerOrAdmin,
+    user_id: &str,
+) -> ApiResult<Json<ApiResponse<Vec<AppInstallationResponse>>>> {
+    let data = AppInstallerService::list_installations_by_user(db.get_pool(), user_id).await?;
+    Ok(success(data))
+}
+
 /// Mendapatkan routes untuk app installer
 pub fn app_routes() -> Vec<Route> {
-    routes![install_app]
+    routes![install_app, list_installations, list_installations_by_user_admin]
 }

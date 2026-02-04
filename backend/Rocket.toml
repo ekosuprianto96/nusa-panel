@@ -4,8 +4,7 @@ port = 8095
 workers = 4
 keep_alive = 5
 log_level = "normal"
-# Secret key untuk secure cookies - GANTI DI PRODUCTION!
-secret_key = "hPRYyVRiMyxpw5sBB1XeCMN1kFsDCqKvBi2QJxBVHQk="
+# Secret key untuk secure cookies diambil dari env ROCKET_SECRET_KEY
 
 [default.limits]
 # Limit untuk form data

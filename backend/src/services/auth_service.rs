@@ -14,7 +14,8 @@ use crate::models::{
 };
 use crate::utils::jwt::{create_token_pair, validate_refresh_token, TokenPair, TokenPayload};
 use crate::utils::password::{hash_password, validate_password_strength, verify_password};
-use crate::utils::system::{ensure_system_user, update_system_password};
+use crate::utils::system::update_system_password;
+use totp_rs::{Algorithm, Secret, TOTP};
 
 /// Service untuk operasi authentication
 pub struct AuthService;
@@ -72,6 +73,8 @@ impl AuthService {
         // Generate Readable User ID (u_ + 12 chars of UUID)
         let uuid = Uuid::new_v4().simple().to_string();
         let user_id = format!("u_{}", &uuid[0..12]);
+        // Use DB username as system username for consistency with file_service
+        let system_username = &request.username;
         let now = Utc::now();
 
         // Insert user
@@ -98,14 +101,12 @@ impl AuthService {
             .fetch_one(pool)
             .await?;
 
-        tracing::info!("New user registered: {}", user.username);
+        tracing::info!("New user registered: {} (system: {})", user.username, system_username);
 
-        // Ensure System User Exists
-        // NOTE: We use the raw password here to set it for the system user
-        if let Err(e) = ensure_system_user(&user.username, &request.password) {
-             tracing::error!("Failed to create system user for {}: {}", user.username, e);
-             // We don't fail the request here, but we log the error. 
-             // Ideally we might want to return a warning or fail, but user creation in DB succeeded.
+        // Create system user using DB username for consistency
+        if let Err(e) = crate::utils::system::ensure_system_user(system_username, &request.password) {
+            tracing::error!("Failed to create system user {}: {}", system_username, e);
+            // Non-blocking error, user is created in DB already
         }
 
         Ok(UserResponse::from(user))
@@ -151,11 +152,40 @@ impl AuthService {
             return Err(ApiError::InvalidCredentials);
         }
 
-        // Backfill: Ensure system user exists (if user valid)
-        // This handles older users or migration cases
-        if let Err(e) = ensure_system_user(&user.username, &request.password) {
-             tracing::warn!("Backfill system user for {} failed: {}", user.username, e);
-             // Proceed anyway, don't block login
+        // Enforce 2FA if enabled
+        let two_fa = sqlx::query_as::<_, (bool, String)>(
+            "SELECT is_enabled, secret FROM user_2fa WHERE user_id = ?",
+        )
+        .bind(&user.id)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some((is_enabled, secret)) = two_fa {
+            if is_enabled {
+                let code = request.two_fa_code.clone().ok_or(ApiError::TwoFactorRequired)?;
+                let secret = Secret::Encoded(secret);
+                let totp = TOTP::new(
+                    Algorithm::SHA1,
+                    6,
+                    1,
+                    30,
+                    secret
+                        .to_bytes()
+                        .map_err(|e| ApiError::InternalError(format!("Invalid secret: {}", e)))?,
+                )
+                .map_err(|e| ApiError::InternalError(format!("Failed to init TOTP: {}", e)))?;
+
+                match totp.check_current(&code) {
+                    Ok(true) => {}
+                    Ok(false) => return Err(ApiError::TwoFactorInvalid),
+                    Err(e) => {
+                        return Err(ApiError::InternalError(format!(
+                            "Failed to validate 2FA code: {}",
+                            e
+                        )))
+                    }
+                }
+            }
         }
 
         // Update last login time

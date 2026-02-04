@@ -208,6 +208,56 @@ build_app() {
     fi
 }
 
+# 5.3 Setup phpMyAdmin
+setup_phpmyadmin() {
+    info "Step 5.3: Installing & Configuring phpMyAdmin..."
+    
+    # Pre-configure debconf to avoid prompts
+    # We choose NOT to use dbconfig-common to auto-create db, as we manage it manually or it's just a GUI
+    # Or strictly use defaults.
+    echo "phpmyadmin phpmyadmin/dbconfig-install boolean false" | debconf-set-selections
+    echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect" | debconf-set-selections
+    
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y phpmyadmin
+    
+    # 1. Copy Config
+    if [ -f "$APP_DIR/phpmyadmin/config.inc.php" ]; then
+        info "Applying custom config.inc.php..."
+        cp "$APP_DIR/phpmyadmin/config.inc.php" /etc/phpmyadmin/config.inc.php
+        chown root:www-data /etc/phpmyadmin/config.inc.php
+        chmod 640 /etc/phpmyadmin/config.inc.php
+    else
+        info "Warning: Custom config.inc.php not found in $APP_DIR/phpmyadmin/"
+    fi
+
+    # 2. Copy Signon Script
+    if [ -f "$APP_DIR/phpmyadmin/signon.php" ]; then
+        info "Deploying signon.php..."
+        cp "$APP_DIR/phpmyadmin/signon.php" /usr/share/phpmyadmin/signon.php
+        chown www-data:www-data /usr/share/phpmyadmin/signon.php
+        chmod 644 /usr/share/phpmyadmin/signon.php
+        
+        # Inject Secrets (PMA_INTERNAL_KEY)
+        # Use simple sed, assuming variable is set from setup_database
+        if [ ! -z "$PMA_INTERNAL_KEY" ]; then
+            info "Injecting PMA_INTERNAL_KEY into signon.php..."
+            sed -i "s/change-me-in-production/$PMA_INTERNAL_KEY/g" /usr/share/phpmyadmin/signon.php
+        fi
+    else
+        info "Warning: signon.php not found in $APP_DIR/phpmyadmin/"
+    fi
+    
+    # 3. Inject Blowfish Secret into Config
+    info "Generating Blowfish Secret..."
+    BLOWFISH_SECRET=$(openssl rand -base64 32 | tr -d '/+' | cut -c1-32) # alphanumeric only for safety
+    sed -i "s/change-this-to-your-secret-32chars/$BLOWFISH_SECRET/g" /etc/phpmyadmin/config.inc.php
+    
+    # 4. Ensure permissions for signon log
+    mkdir -p /var/log/phpmyadmin
+    chown www-data:www-data /var/log/phpmyadmin
+}
+
 # 6. Database Setup
 setup_database() {
     info "Step 6/7: Configuring Database..."
@@ -222,12 +272,16 @@ setup_database() {
     mysql -e "FLUSH PRIVILEGES;"
     
     # Write .env
+    # Generate PMA Key
+    PMA_INTERNAL_KEY=$(openssl rand -hex 32)
+    
     cat > "$APP_DIR/.env" <<EOF
 DATABASE_URL=mysql://$DB_USER:$DB_PASS@localhost/$DB_NAME
 JWT_SECRET=$(openssl rand -hex 32)
 RUST_LOG=info
 APP_ENV=production
 APP_PORT=8000
+PMA_INTERNAL_KEY=$PMA_INTERNAL_KEY
 EOF
 
     chown $SERVICE_USER:$SERVICE_USER "$APP_DIR/.env"
@@ -286,6 +340,17 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    # phpMyAdmin
+    location ^~ /phpmyadmin/ {
+        alias /usr/share/phpmyadmin/;
+        index index.php;
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+            fastcgi_param SCRIPT_FILENAME \$request_filename;
+        }
+    }
+
     # Frontend SPA
     location / {
         try_files \$uri \$uri/ /index.html;
@@ -317,6 +382,7 @@ install_php
 install_tools
 setup_database
 build_app
+setup_phpmyadmin
 setup_security_service
 
 info "Installation Completed Successfully!"

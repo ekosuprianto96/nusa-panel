@@ -14,6 +14,8 @@ use crate::models::{
     DnsRecordResponse, Domain, DomainResponse, PaginatedDomains, Subdomain, SubdomainResponse, UpdateDnsRecordRequest,
     UpdateDomainRequest, CreateRedirectRequest, CreateAliasRequest, Redirect, DomainAlias,
 };
+use crate::models::CreateVirtualHostRequest;
+use crate::services::WebServerService;
 
 /// Service untuk operasi domain
 pub struct DomainService;
@@ -83,6 +85,16 @@ impl DomainService {
         }
 
         Ok(PaginatedDomains { items, total })
+    }
+
+    /// Get all domains untuk user (Admin/Reseller)
+    pub async fn get_user_domains_admin(
+        pool: &MySqlPool,
+        user_id: &str,
+        page: i64,
+        per_page: i64,
+    ) -> ApiResult<PaginatedDomains> {
+        Self::get_user_domains(pool, user_id, page, per_page).await
     }
 
     /// Get domain by ID
@@ -195,6 +207,17 @@ impl DomainService {
 
         tracing::info!("Domain created: {} for user {}", domain_name, user_id);
 
+        // Auto-generate vhost if not exists (best effort)
+        let vhost_req = CreateVirtualHostRequest {
+            domain_id: domain_id.clone(),
+            php_version: None,
+            web_server_type: Default::default(),
+            ssl_enabled: Some(false),
+        };
+        if let Err(e) = WebServerService::create_vhost(pool, user_id, vhost_req).await {
+            tracing::warn!("Auto vhost creation failed for domain {}: {}", domain_name, e);
+        }
+
         // Fetch and return created domain
         Self::get_by_id(pool, &domain_id, user_id).await
     }
@@ -273,6 +296,38 @@ impl DomainService {
         tracing::info!("Domain updated: {}", domain.domain_name);
 
         Self::get_by_id(pool, domain_id, user_id).await
+    }
+
+    /// Update status domain by admin/reseller
+    pub async fn update_status_by_admin(
+        pool: &MySqlPool,
+        domain_id: &str,
+        is_active: bool,
+    ) -> ApiResult<DomainResponse> {
+        let domain = sqlx::query_as::<_, Domain>(
+            "SELECT * FROM domains WHERE id = ?",
+        )
+        .bind(domain_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        sqlx::query(
+            "UPDATE domains SET is_active = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(is_active)
+        .bind(Utc::now())
+        .bind(domain_id)
+        .execute(pool)
+        .await?;
+
+        tracing::info!(
+            "Domain status updated by admin: {} -> {}",
+            domain.domain_name,
+            is_active
+        );
+
+        Self::get_by_id(pool, domain_id, &domain.user_id).await
     }
 
     /// Delete domain

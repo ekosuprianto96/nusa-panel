@@ -7,7 +7,7 @@
 extern crate rocket;
 
 use dotenv::dotenv;
-use rocket::fairing::AdHoc;
+// use rocket::fairing::AdHoc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use nusa_panel::config::AppConfig;
@@ -83,8 +83,16 @@ async fn rocket() -> _ {
         .to_cors()
         .expect("Failed to create CORS fairing");
 
-    let frontend_path = std::env::var("FRONTEND_DIST")
-    .unwrap_or_else(|_| format!("{}/frontend/dist", std::env::current_dir().unwrap().display()));
+    let frontend_path = std::env::var("FRONTEND_DIST").unwrap_or_else(|_| {
+        let cwd = std::env::current_dir().unwrap();
+        let dist = cwd.join("frontend").join("dist");
+        if dist.is_dir() {
+            dist.to_string_lossy().to_string()
+        } else {
+            let alt = cwd.join("..").join("frontend").join("dist");
+            alt.to_string_lossy().to_string()
+        }
+    });
 
     // Build Rocket instance
     rocket::build()
@@ -111,11 +119,14 @@ async fn rocket() -> _ {
         .mount("/api/apps", routes::app_routes())
         .mount("/api/redis", routes::redis_routes())
         .mount("/api/nodejs", routes::nodejs_routes())
+        .mount("/api/packages", routes::package_routes())
         .mount("/api/phpmyadmin", routes::phpmyadmin_routes())
         // Serve Static Files for Frontend
         .mount("/", FileServer::from(&frontend_path))
         // Frontend
         .mount("/", routes![spa_fallback])
+        // Catchers
+        .register("/", catchers![routes::forbidden_catcher])
         // Manage application state
         .manage(config)
 }

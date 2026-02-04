@@ -15,10 +15,123 @@ use crate::models::{
     CreateVirtualHostRequest, Domain, PackageSpecs, PhpVersion, RequestSslRequest,
     SslCertificate, SslCertificateResponse, VirtualHost, VirtualHostResponse,
 };
+use crate::services::PhpPoolService;
 
 pub struct WebServerServiceReal;
 
 impl WebServerServiceReal {
+    fn nginx_config(domain_name: &str, document_root: &str, php_ver: &str, system_username: &str) -> String {
+        format!(
+            r#"
+server {{
+    listen 80;
+    server_name {0} www.{0};
+    root {1};
+    index index.php index.html;
+
+    location / {{
+        try_files $uri $uri/ =404;
+    }}
+
+    location ~ \.php$ {{
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php-fpm-{2}-{3}.sock;
+    }}
+}}
+"#,
+            domain_name,
+            document_root,
+            php_ver,
+            system_username
+        )
+    }
+
+    fn apache_config(domain_name: &str, document_root: &str, php_ver: &str, system_username: &str) -> String {
+        format!(
+            r#"
+<VirtualHost *:80>
+    ServerName {0}
+    ServerAlias www.{0}
+    DocumentRoot {1}
+
+    <Directory {1}>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/php-fpm-{2}-{3}.sock|fcgi://localhost"
+    </FilesMatch>
+
+    ErrorLog ${{APACHE_LOG_DIR}}/{0}_error.log
+    CustomLog ${{APACHE_LOG_DIR}}/{0}_access.log combined
+</VirtualHost>
+"#,
+            domain_name,
+            document_root,
+            php_ver,
+            system_username
+        )
+    }
+
+    pub async fn update_user_vhosts_php(
+        pool: &MySqlPool,
+        user_id: &str,
+        php_ver: &str,
+    ) -> ApiResult<()> {
+        let username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let system_username = format!("user_{}", username);
+
+        // Only update active vhosts
+        let domains = sqlx::query_as::<_, Domain>(
+            r#"
+            SELECT d.* FROM virtual_hosts v
+            JOIN domains d ON d.id = v.domain_id
+            WHERE v.user_id = ? AND v.is_active = TRUE
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?;
+
+        let mut nginx_updated = false;
+        let mut apache_updated = false;
+
+        for domain in domains {
+            // Ensure pool for this user/version
+            PhpPoolService::ensure_user_pool(php_ver, &system_username)?;
+
+            let nginx_path = format!("/etc/nginx/sites-available/{}", domain.domain_name);
+            if std::path::Path::new(&nginx_path).exists() {
+                let content = Self::nginx_config(&domain.domain_name, &domain.document_root, php_ver, &system_username);
+                fs::write(&nginx_path, content)
+                    .map_err(|e| ApiError::InternalError(format!("Nginx write error: {}", e)))?;
+                nginx_updated = true;
+            }
+
+            let apache_path = format!("/etc/apache2/sites-available/{}.conf", domain.domain_name);
+            if std::path::Path::new(&apache_path).exists() {
+                let content = Self::apache_config(&domain.domain_name, &domain.document_root, php_ver, &system_username);
+                fs::write(&apache_path, content)
+                    .map_err(|e| ApiError::InternalError(format!("Apache write error: {}", e)))?;
+                apache_updated = true;
+            }
+        }
+
+        // Reload web servers if configs updated
+        if nginx_updated {
+            let _ = Command::new("systemctl").arg("reload").arg("nginx").output();
+        }
+        if apache_updated {
+            let _ = Command::new("systemctl").arg("reload").arg("apache2").output();
+        }
+
+        Ok(())
+    }
     // ==========================================
     // VIRTUAL HOST OPERATIONS (REAL)
     // ==========================================
@@ -41,7 +154,27 @@ impl WebServerServiceReal {
         }
 
         // 2. Prepare Config Variables
-        let php_ver = request.php_version.clone().unwrap_or_default().to_string();
+        // Prefer request php_version, otherwise user preference, fallback default
+        let user_php_version = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT php_version FROM users WHERE id = ?",
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?
+        .flatten();
+
+        let php_ver = request
+            .php_version
+            .clone()
+            .map(|v| v.to_string())
+            .or(user_php_version)
+            .unwrap_or_else(|| PhpVersion::default().to_string());
+
+        let username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let system_username = format!("user_{}", username);
         let server_type = request.web_server_type;
         let vhost_id = Uuid::new_v4().to_string();
         let now = Utc::now();
@@ -54,27 +187,14 @@ impl WebServerServiceReal {
                 let config_path = format!("/etc/nginx/sites-available/{}", domain.domain_name);
                 let link_path = format!("/etc/nginx/sites-enabled/{}", domain.domain_name);
                 
-                let nginx_config = format!(
-                    r#"
-server {{
-    listen 80;
-    server_name {0} www.{0};
-    root {1};
-    index index.php index.html;
+                // Ensure per-user PHP-FPM pool exists
+                PhpPoolService::ensure_user_pool(&php_ver, &system_username)?;
 
-    location / {{
-        try_files $uri $uri/ =404;
-    }}
-
-    location ~ \.php$ {{
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php{2}-fpm.sock;
-    }}
-}}
-                    "#,
-                    domain.domain_name,
-                    domain.document_root,
-                    php_ver
+                let nginx_config = Self::nginx_config(
+                    &domain.domain_name,
+                    &domain.document_root,
+                    &php_ver,
+                    &system_username,
                 );
 
                 fs::write(&config_path, nginx_config)
@@ -96,30 +216,14 @@ server {{
             crate::models::WebServerType::Apache => {
                 let config_path = format!("/etc/apache2/sites-available/{}.conf", domain.domain_name);
                 
-                let apache_config = format!(
-                    r#"
-<VirtualHost *:80>
-    ServerName {0}
-    ServerAlias www.{0}
-    DocumentRoot {1}
+                // Ensure per-user PHP-FPM pool exists
+                PhpPoolService::ensure_user_pool(&php_ver, &system_username)?;
 
-    <Directory {1}>
-        Options Indexes FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
-
-    <FilesMatch \.php$>
-        SetHandler "proxy:unix:/run/php/php{2}-fpm.sock|fcgi://localhost"
-    </FilesMatch>
-
-    ErrorLog ${{APACHE_LOG_DIR}}/{0}_error.log
-    CustomLog ${{APACHE_LOG_DIR}}/{0}_access.log combined
-</VirtualHost>
-                    "#,
-                    domain.domain_name,
-                    domain.document_root,
-                    php_ver
+                let apache_config = Self::apache_config(
+                    &domain.domain_name,
+                    &domain.document_root,
+                    &php_ver,
+                    &system_username,
                 );
 
                 fs::write(&config_path, apache_config)
@@ -361,6 +465,12 @@ virtualhost {0} {{
             .fetch_one(pool)
             .await?;
 
+        let username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let system_username = format!("user_{}", username);
+
         // 2. Jalankan Certbot
         // certbot certonly --webroot -w /var/www/html/user/domain.com -d domain.com --non-interactive --agree-tos -m admin@example.com
         let email_arg = request.email.unwrap_or_else(|| vhost.admin_email.clone());
@@ -421,6 +531,7 @@ virtualhost {0} {{
             // 5. Update Nginx Config untuk support SSL
             // Kita perlu inject blok 'listen 443 ssl' dan path sertifikat
             let config_path = format!("/etc/nginx/sites-available/{}", domain.domain_name);
+            PhpPoolService::ensure_user_pool(&vhost.php_version, &system_username)?;
             let nginx_ssl_config = format!(
                 r#"
 server {{
@@ -452,7 +563,7 @@ server {{
 
     location ~ \.php$ {{
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php{4}-fpm.sock;
+        fastcgi_pass unix:/run/php/php-fpm-{4}-{5}.sock;
     }}
 }}
                 "#,
@@ -460,7 +571,8 @@ server {{
                 vhost.document_root,
                 cert_path,
                 key_path,
-                vhost.php_version
+                vhost.php_version,
+                system_username
             );
 
             fs::write(&config_path, nginx_ssl_config)

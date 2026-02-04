@@ -5,7 +5,7 @@
 
 use chrono::{TimeZone, Utc};
 use std::fs::{self, Metadata};
-use std::io::{Read, Write, Seek};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use validator::Validate;
 use walkdir::WalkDir;
@@ -39,7 +39,8 @@ impl FileService {
         // #[cfg(not(debug_assertions))]
         let base = &CONFIG.file.user_home_base;
         
-        PathBuf::from(base).join(format!("user_{}", username))
+        // Use username directly - system user creation already handles the proper naming
+        PathBuf::from(base).join(username)
     }
 
     /// Resolve dan validasi path

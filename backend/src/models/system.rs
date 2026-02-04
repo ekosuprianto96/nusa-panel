@@ -122,3 +122,21 @@ pub struct ServiceStatus {
     pub uptime: String,
     pub memory_usage: String,
 }
+
+/// Resource Usage
+#[derive(Debug, Serialize)]
+pub struct ResourceUsage {
+    pub cpu: f32,    // percentage
+    pub memory: u64, // bytes
+    pub disk: u64,   // bytes
+    pub processes: Vec<ProcessInfo>,
+}
+
+/// Process Information
+#[derive(Debug, Serialize)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+    pub cpu: f32,
+    pub memory: u64,
+}

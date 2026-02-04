@@ -72,3 +72,17 @@ pub struct InstallAppResponse {
     pub db_user: String,
     pub db_pass: String,
 }
+
+/// Response untuk list installations
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct AppInstallationResponse {
+    pub id: String,
+    pub user_id: String,
+    pub domain_id: String,
+    pub domain_name: String,
+    pub app_type: String,
+    pub version: String,
+    pub status: String,
+    pub install_path: String,
+    pub installed_at: DateTime<Utc>,
+}

@@ -7,10 +7,10 @@ use rocket::{delete, get, post, put, routes, Route, State};
 
 use crate::database::Database;
 use crate::errors::ApiResult;
-use crate::guards::{AdminUser, AuthenticatedUser};
+use crate::guards::{AuthenticatedUser};
 use crate::models::{
     CreateBackupRequest, CreateCronJobRequest, CronJob, ServiceStatus, SystemBackup,
-    UpdateCronJobRequest,
+    UpdateCronJobRequest, ResourceUsage,
 };
 use crate::services::SystemService;
 use crate::utils::response::{success, success_message, ApiResponse};
@@ -125,13 +125,13 @@ pub async fn delete_backup(
 }
 
 // ==========================================
-// SERVICE STATUS ENDPOINTS (Admin Only)
+// SERVICE STATUS ENDPOINTS (Any Authenticated User)
 // ==========================================
 
 /// Get system service status
 #[get("/services")]
 pub async fn get_services_status(
-    _admin: AdminUser,
+    _user: AuthenticatedUser,
 ) -> ApiResult<Json<ApiResponse<Vec<ServiceStatus>>>> {
     let status = SystemService::get_service_status().await?;
     Ok(success(status))
@@ -153,7 +153,7 @@ pub struct ControlServiceRequest {
 /// ```
 #[post("/services/<service_name>", format = "json", data = "<request>")]
 pub async fn control_service(
-    _admin: AdminUser,
+    _user: AuthenticatedUser,
     service_name: &str,
     request: Json<ControlServiceRequest>,
 ) -> ApiResult<Json<ApiResponse<ServiceStatus>>> {
@@ -167,14 +167,14 @@ pub async fn control_service(
 
 /// Get installed PHP versions
 #[get("/php/versions")]
-pub async fn get_php_versions(_admin: AdminUser) -> ApiResult<Json<ApiResponse<Vec<String>>>> {
+pub async fn get_php_versions(_user: AuthenticatedUser) -> ApiResult<Json<ApiResponse<Vec<String>>>> {
     let versions = SystemService::get_php_versions().await?;
     Ok(success(versions))
 }
 
 /// Get current PHP version
 #[get("/php/current")]
-pub async fn get_current_php_version(_admin: AdminUser) -> ApiResult<Json<ApiResponse<String>>> {
+pub async fn get_current_php_version(_user: AuthenticatedUser) -> ApiResult<Json<ApiResponse<String>>> {
     let version = SystemService::get_current_php_version().await?;
     Ok(success(version))
 }
@@ -188,10 +188,36 @@ pub struct ChangePhpRequest {
 /// Change PHP version
 #[post("/php/change", format = "json", data = "<request>")]
 pub async fn change_php_version(
-    _admin: AdminUser,
+    _user: AuthenticatedUser,
     request: Json<ChangePhpRequest>,
 ) -> ApiResult<Json<ApiResponse<String>>> {
     let version = SystemService::change_php_version(&request.version).await?;
+    Ok(success(version))
+}
+
+// ==========================================
+// USER PHP VERSION (PER-USER)
+// ==========================================
+
+/// Get preferred PHP version for current user
+#[get("/php/user-version")]
+pub async fn get_user_php_version(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+) -> ApiResult<Json<ApiResponse<Option<String>>>> {
+    let version = SystemService::get_user_php_version(db.get_pool(), &user.id).await?;
+    Ok(success(version))
+}
+
+/// Set preferred PHP version for current user
+#[post("/php/user-version", format = "json", data = "<request>")]
+pub async fn set_user_php_version(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    request: Json<ChangePhpRequest>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let version =
+        SystemService::set_user_php_version(db.get_pool(), &user.id, &request.version).await?;
     Ok(success(version))
 }
 
@@ -202,7 +228,7 @@ pub async fn change_php_version(
 /// Get system error logs
 #[get("/logs?<lines>")]
 pub async fn get_error_logs(
-    _admin: AdminUser,
+    _user: AuthenticatedUser,
     lines: Option<usize>,
 ) -> ApiResult<Json<ApiResponse<Vec<String>>>> {
     // Default 50 baris, max 200
@@ -213,9 +239,57 @@ pub async fn get_error_logs(
 
 /// Clear system logs
 #[post("/logs/clear")]
-pub async fn clear_error_logs(_admin: AdminUser) -> ApiResult<Json<ApiResponse<()>>> {
+pub async fn clear_error_logs(_user: AuthenticatedUser) -> ApiResult<Json<ApiResponse<()>>> {
     SystemService::clear_error_logs().await?;
     Ok(success_message("Error logs cleared"))
+}
+
+// ==========================================
+// DNS TRACKER ENDPOINTS
+// ==========================================
+
+#[derive(serde::Deserialize)]
+pub struct DnsLookupRequest {
+    pub domain: String,
+    pub record_type: String, // A, AAAA, MX, NS, TXT, CNAME
+}
+
+#[derive(serde::Deserialize)]
+pub struct TraceRouteRequest {
+    pub domain: String,
+}
+
+/// DNS Lookup
+#[post("/dns/lookup", format = "json", data = "<request>")]
+pub async fn dns_lookup(
+    _user: AuthenticatedUser,
+    request: Json<DnsLookupRequest>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let result = SystemService::dns_lookup(&request.domain, &request.record_type).await?;
+    Ok(success(result))
+}
+
+/// Trace Route
+#[post("/dns/traceroute", format = "json", data = "<request>")]
+pub async fn trace_route(
+    _user: AuthenticatedUser,
+    request: Json<TraceRouteRequest>,
+) -> ApiResult<Json<ApiResponse<Vec<String>>>> {
+    let result = SystemService::trace_route(&request.domain).await?;
+    Ok(success(result))
+}
+
+// ==========================================
+// RESOURCE USAGE ENDPOINTS
+// ==========================================
+
+/// Get Resource Usage (CPU, RAM, Disk)
+#[get("/resources")]
+pub async fn get_resource_usage(
+    _user: AuthenticatedUser,
+) -> ApiResult<Json<ApiResponse<ResourceUsage>>> {
+    let usage = SystemService::get_resource_usage().await?;
+    Ok(success(usage))
 }
 
 /// Mendapatkan routes untuk system tools
@@ -233,7 +307,12 @@ pub fn system_routes() -> Vec<Route> {
         get_php_versions,
         get_current_php_version,
         change_php_version,
+        get_user_php_version,
+        set_user_php_version,
         get_error_logs,
-        clear_error_logs
+        clear_error_logs,
+        dns_lookup,
+        trace_route,
+        get_resource_usage
     ]
 }

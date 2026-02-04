@@ -1,12 +1,19 @@
 //! # Password Utilities
 //!
-//! Modul untuk hashing dan verifikasi password.
-//! Menggunakan Argon2id - algoritma yang direkomendasikan untuk password hashing.
+//! Modul untuk hashing, verifikasi, dan enkripsi password.
+//! - Hashing: Argon2id untuk user authentication
+//! - Enkripsi: AES-256-GCM untuk SSO (reversible)
 
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use rand::RngCore;
 
 use crate::config::CONFIG;
 use crate::errors::ApiError;
@@ -196,14 +203,124 @@ pub fn generate_random_password(length: usize) -> String {
     password.into_iter().collect()
 }
 
+// ==========================================
+// PASSWORD ENCRYPTION (untuk SSO)
+// ==========================================
+
+/// Encrypt password menggunakan AES-256-GCM
+///
+/// Password dienkripsi (bukan di-hash) sehingga bisa didekripsi untuk SSO.
+/// Format output: base64(nonce + ciphertext)
+///
+/// # Arguments
+/// * `password` - Plain text password
+///
+/// # Returns
+/// Encrypted password string (base64 encoded)
+pub fn encrypt_password(password: &str) -> Result<String, ApiError> {
+    let key_b64 = &CONFIG.security.encryption_master_key;
+    let key_bytes = BASE64.decode(key_b64).map_err(|e| {
+        tracing::error!("Invalid encryption key format: {}", e);
+        ApiError::InternalError("Invalid encryption key".to_string())
+    })?;
+
+    if key_bytes.len() != 32 {
+        return Err(ApiError::InternalError(format!(
+            "Encryption key must be 32 bytes, got {}",
+            key_bytes.len()
+        )));
+    }
+
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| {
+        tracing::error!("Failed to create cipher: {}", e);
+        ApiError::InternalError("Encryption setup failed".to_string())
+    })?;
+
+    // Generate random 12-byte nonce
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // Encrypt
+    let ciphertext = cipher
+        .encrypt(nonce, password.as_bytes())
+        .map_err(|e| {
+            tracing::error!("Encryption failed: {}", e);
+            ApiError::InternalError("Failed to encrypt password".to_string())
+        })?;
+
+    // Combine nonce + ciphertext and encode as base64
+    let mut combined = Vec::with_capacity(12 + ciphertext.len());
+    combined.extend_from_slice(&nonce_bytes);
+    combined.extend_from_slice(&ciphertext);
+
+    Ok(BASE64.encode(&combined))
+}
+
+/// Decrypt password yang dienkripsi dengan encrypt_password
+///
+/// # Arguments
+/// * `encrypted` - Base64 encoded encrypted password (nonce + ciphertext)
+///
+/// # Returns
+/// Plain text password
+pub fn decrypt_password(encrypted: &str) -> Result<String, ApiError> {
+    let key_b64 = &CONFIG.security.encryption_master_key;
+    let key_bytes = BASE64.decode(key_b64).map_err(|e| {
+        tracing::error!("Invalid encryption key format: {}", e);
+        ApiError::InternalError("Invalid encryption key".to_string())
+    })?;
+
+    if key_bytes.len() != 32 {
+        return Err(ApiError::InternalError(format!(
+            "Encryption key must be 32 bytes, got {}",
+            key_bytes.len()
+        )));
+    }
+
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| {
+        tracing::error!("Failed to create cipher: {}", e);
+        ApiError::InternalError("Decryption setup failed".to_string())
+    })?;
+
+    // Decode base64
+    let combined = BASE64.decode(encrypted).map_err(|e| {
+        tracing::error!("Invalid encrypted password format: {}", e);
+        ApiError::InternalError("Invalid encrypted password".to_string())
+    })?;
+
+    if combined.len() < 12 {
+        return Err(ApiError::InternalError(
+            "Encrypted password too short".to_string(),
+        ));
+    }
+
+    // Split nonce and ciphertext
+    let (nonce_bytes, ciphertext) = combined.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    // Decrypt
+    let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|e| {
+        tracing::error!("Decryption failed: {}", e);
+        ApiError::InternalError("Failed to decrypt password".to_string())
+    })?;
+
+    String::from_utf8(plaintext).map_err(|e| {
+        tracing::error!("Invalid UTF-8 in decrypted password: {}", e);
+        ApiError::InternalError("Decrypted password is invalid".to_string())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_hash_and_verify_password() {
-        let password = "TestP@ssword123";
+        let password = "Admin@123";
         let hash = hash_password(password).expect("Failed to hash password");
+
+        print!("Hashed password: {}", hash);
 
         // Verify correct password
         assert!(verify_password(password, &hash).expect("Verification failed"));

@@ -2,12 +2,12 @@
 //!
 //! Business logic untuk user management.
 
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use sqlx::MySqlPool;
 use validator::Validate;
 
 use crate::errors::{ApiError, ApiResult};
-use crate::models::{UpdateUserRequest, User, UserResponse};
+use crate::models::{AdminUserStats, UpdateUserRequest, User, UserResponse};
 
 /// Service untuk operasi user
 pub struct UserService;
@@ -65,6 +65,40 @@ impl UserService {
             users.into_iter().map(UserResponse::from).collect();
 
         Ok((user_responses, total))
+    }
+
+    /// Get admin user stats (counts)
+    pub async fn get_admin_stats(pool: &MySqlPool) -> ApiResult<AdminUserStats> {
+        let total_users = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+            .fetch_one(pool)
+            .await?;
+
+        let active_users = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM users WHERE status = 'active'",
+        )
+        .fetch_one(pool)
+        .await?;
+
+        let blocked_users = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM users WHERE status = 'blocked'",
+        )
+        .fetch_one(pool)
+        .await?;
+
+        let since = Utc::now() - Duration::days(7);
+        let new_signups_7d = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM users WHERE created_at >= ?",
+        )
+        .bind(since)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(AdminUserStats {
+            total_users,
+            active_users,
+            blocked_users,
+            new_signups_7d,
+        })
     }
 
     /// Update user

@@ -58,6 +58,71 @@ pub fn ensure_system_user(username: &str, password: &str) -> ApiResult<()> {
          return Err(ApiError::InternalError(format!("Failed to set system password: {}", error_msg)));
     }
 
+    // 4. Create Directory Skeleton
+    let directories = vec![
+        ("public_html", "755"),
+        ("logs", "700"),
+        ("backups", "700"),
+        ("tmp", "700"),
+    ];
+
+    for (dir, perms) in directories {
+        let path = format!("/home/{}/{}", username, dir);
+        
+        // mkdir -p path
+        let output = Command::new("sudo")
+            .arg("mkdir")
+            .arg("-p")
+            .arg(&path)
+            .output()
+            .map_err(|e| ApiError::InternalError(format!("Failed to spawn mkdir for {}: {}", path, e)))?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+             return Err(ApiError::InternalError(format!("Failed to create directory {}: {}", path, error_msg.trim())));
+        }
+
+        // chown username:username path
+        let output = Command::new("sudo")
+            .arg("chown")
+            .arg(format!("{}:{}", username, username))
+            .arg(&path)
+            .output()
+            .map_err(|e| ApiError::InternalError(format!("Failed to spawn chown for {}: {}", path, e)))?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+             return Err(ApiError::InternalError(format!("Failed to set ownership for {}: {}", path, error_msg.trim())));
+        }
+
+        // chmod perms path
+        let output = Command::new("sudo")
+            .arg("chmod")
+            .arg(perms)
+            .arg(&path)
+            .output()
+            .map_err(|e| ApiError::InternalError(format!("Failed to spawn chmod for {}: {}", path, e)))?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+             return Err(ApiError::InternalError(format!("Failed to set permissions for {}: {}", path, error_msg.trim())));
+        }
+    }
+
+    // 5. Ensure Home Directory Permissions (755 for Nginx access)
+    // chmod 755 /home/username
+    let output = Command::new("sudo")
+        .arg("chmod")
+        .arg("755")
+        .arg(format!("/home/{}", username))
+        .output()
+        .map_err(|e| ApiError::InternalError(format!("Failed to spawn chmod for home: {}", e)))?;
+
+    if !output.status.success() {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(ApiError::InternalError(format!("Failed to set home permissions: {}", error_msg.trim())));
+    }
+
     Ok(())
 }
 
@@ -107,7 +172,7 @@ pub fn ensure_directory(path: &str, owner: &str) -> ApiResult<()> {
     let output = Command::new("sudo")
         .arg("chown")
         .arg("-R")
-        .arg(format!("user_{}:{}", owner, owner))
+        .arg(format!("{}:{}", owner, owner))
         .arg(path)
         .output()
         .map_err(|e| ApiError::InternalError(format!("Failed to execute chown: {}", e)))?;

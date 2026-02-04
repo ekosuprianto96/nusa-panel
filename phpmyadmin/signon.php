@@ -86,18 +86,6 @@ function validateToken(string $token): ?array {
     $error = curl_error($ch);
     curl_close($ch);
     
-    // DEBUG - Tampilkan detail response
-    echo "<pre>";
-    echo "=== DEBUG API CALL ===\n";
-    echo "URL: $url\n";
-    echo "POST Data: $postData\n";
-    echo "HTTP Code: $httpCode\n";
-    echo "cURL Error: " . ($error ?: 'none') . "\n";
-    echo "Response: $response\n";
-    echo "======================\n";
-    echo "</pre>";
-    // END DEBUG
-    
     if ($error) {
         logError("cURL error: $error");
         return null;
@@ -142,16 +130,6 @@ if (!preg_match('/^[a-f0-9\-]{36}$/i', $token)) {
 
 // Validate token dengan API
 $credentials = validateToken($token);
-
-// Debug - hapus setelah fix
-if ($credentials === null) {
-    echo "<pre>";
-    echo "API URL: " . $config['api_url'] . "/api/phpmyadmin/validate\n";
-    echo "Token: $token\n";  
-    echo "Internal Key: " . $config['internal_key'] . "\n";
-    echo "</pre>";
-    die();
-}
 
 if ($credentials === null) {
     redirectWithError('invalid_token');

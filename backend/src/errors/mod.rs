@@ -119,6 +119,18 @@ pub enum ApiError {
     RateLimitExceeded(u64),
 
     // ==========================================
+    // Two-Factor Auth (401)
+    // ==========================================
+
+    /// 2FA code required
+    #[error("Kode 2FA diperlukan")]
+    TwoFactorRequired,
+
+    /// 2FA code invalid
+    #[error("Kode 2FA tidak valid")]
+    TwoFactorInvalid,
+
+    // ==========================================
     // File Errors
     // ==========================================
     
@@ -158,7 +170,9 @@ impl ApiError {
             // 401 Unauthorized
             Self::InvalidToken
             | Self::MissingToken
-            | Self::InvalidCredentials => Status::Unauthorized,
+            | Self::InvalidCredentials
+            | Self::TwoFactorRequired
+            | Self::TwoFactorInvalid => Status::Unauthorized,
 
             // 403 Forbidden
             Self::Unauthorized
@@ -200,6 +214,8 @@ impl ApiError {
             Self::InvalidRequestBody => "INVALID_REQUEST_BODY",
             Self::MissingParameter(_) => "MISSING_PARAMETER",
             Self::WeakPassword(_) => "WEAK_PASSWORD",
+            Self::TwoFactorRequired => "TWO_FACTOR_REQUIRED",
+            Self::TwoFactorInvalid => "TWO_FACTOR_INVALID",
             Self::NotFound(_) => "NOT_FOUND",
             Self::AlreadyExists(_) => "ALREADY_EXISTS",
             Self::InUse(_) => "IN_USE",

@@ -15,6 +15,7 @@ use crate::models::{
     PhpMyAdminConfig, SignonCredentials, SignonResponse, SignonToken, ValidateTokenRequest,
 };
 use crate::services::DatabaseService;
+use crate::utils::password;
 
 /// In-memory storage untuk signon tokens
 /// Menggunakan RwLock untuk thread-safe access
@@ -158,15 +159,11 @@ impl PhpMyAdminSignonService {
 
     /// Get password database user
     /// 
-    /// # Note
-    /// Saat ini menggunakan fallback karena password disimpan sebagai hash.
-    /// Untuk production, implementasikan encrypted password storage.
+    /// Decrypt encrypted password using AES-256-GCM.
     async fn get_db_user_password(pool: &MySqlPool, db_user_id: &str) -> ApiResult<String> {
-        // Query untuk mendapatkan password
-        // Karena SSO membutuhkan password plaintext, coba ambil dari password_encrypted
-        // Fallback ke password_hash (tapi ini tidak akan work karena hash tidak bisa di-decrypt)
-        let result: Option<(Option<String>, String)> = sqlx::query_as(
-            "SELECT password_encrypted, password_hash FROM database_users WHERE id = ?"
+        // Query untuk mendapatkan password terenkripsi
+        let result: Option<(Option<String>,)> = sqlx::query_as(
+            "SELECT password_encrypted FROM database_users WHERE id = ?"
         )
         .bind(db_user_id)
         .fetch_optional(pool)
@@ -174,18 +171,14 @@ impl PhpMyAdminSignonService {
         .map_err(|e| ApiError::InternalError(format!("Database query failed: {}", e)))?;
 
         match result {
-            Some((Some(encrypted_password), _)) if !encrypted_password.is_empty() => {
-                // Password terenkripsi tersedia
-                // TODO: Decrypt password menggunakan master key
-                Ok(encrypted_password)
+            Some((Some(encrypted_password),)) if !encrypted_password.is_empty() => {
+                // Decrypt password menggunakan utility function
+                password::decrypt_password(&encrypted_password)
             }
-            Some((_, password_hash)) => {
-                // Fallback: untuk development, gunakan password_hash sebagai placeholder
-                // WARNING: Ini TIDAK akan work di production karena hash tidak bisa di-decrypt
-                // User harus mengupdate password untuk enable SSO
+            Some((None,)) | Some((Some(_),)) => {
+                // Password tidak terenkripsi - user perlu update password
                 Err(ApiError::InternalError(
-                    "SSO not available: password stored as hash (cannot decrypt). \
-                    Add 'password_encrypted' column and update user password to enable SSO.".to_string()
+                    "SSO not available: password not encrypted. Please update the database user password to enable SSO.".to_string()
                 ))
             }
             None => {

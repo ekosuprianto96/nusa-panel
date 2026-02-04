@@ -45,14 +45,27 @@ export interface UserResponse {
     full_name: string;
     role: string;
     status: string;
+    package_id: string | null;
+    created_by: string | null;
+    company: string | null;
+    phone: string | null;
+    address: string | null;
     created_at: string;
     last_login_at: string | null;
     usage?: UserResourceUsage;
 }
 
+export interface AdminUserStats {
+    total_users: number;
+    active_users: number;
+    blocked_users: number;
+    new_signups_7d: number;
+}
+
 export interface LoginRequest {
     username_or_email: string;
     password: string;
+    two_fa_code?: string;
 }
 
 export interface CreateUserRequest {
@@ -63,10 +76,90 @@ export interface CreateUserRequest {
     last_name?: string;
 }
 
+export interface CreateUserByAdminRequest {
+    username: string;
+    email: string;
+    password: string;
+    first_name?: string;
+    last_name?: string;
+    role?: 'user' | 'reseller';
+    package_id?: string;
+    company?: string;
+    phone?: string;
+    address?: string;
+    status?: 'active' | 'inactive' | 'pending';
+}
+
 export interface UpdateUserRequest {
     email?: string;
     first_name?: string;
     last_name?: string;
+    company?: string;
+    phone?: string;
+    address?: string;
+}
+
+export interface AssignPackageRequest {
+    package_id: string;
+}
+
+// Package Types
+export interface Package {
+    id: string;
+    name: string;
+    description: string | null;
+    disk_quota_mb: number;
+    bandwidth_mb: number;
+    max_domains: number;
+    max_subdomains: number;
+    max_databases: number;
+    max_email_accounts: number;
+    max_ftp_accounts: number;
+    max_cron_jobs: number;
+    price_monthly: number;
+    price_yearly: number;
+    is_active: boolean;
+    is_default: boolean;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+    users_count?: number;
+}
+
+export interface CreatePackageRequest {
+    name: string;
+    description?: string;
+    disk_quota_mb?: number;
+    bandwidth_mb?: number;
+    max_domains?: number;
+    max_subdomains?: number;
+    max_databases?: number;
+    max_email_accounts?: number;
+    max_ftp_accounts?: number;
+    max_cron_jobs?: number;
+    price_monthly?: number;
+    price_yearly?: number;
+    is_active?: boolean;
+    is_default?: boolean;
+    sort_order?: number;
+}
+
+export interface UpdatePackageRequest {
+    name?: string;
+    description?: string;
+    disk_quota_mb?: number;
+    bandwidth_mb?: number;
+    max_domains?: number;
+    max_subdomains?: number;
+    max_databases?: number;
+    max_email_accounts?: number;
+    max_ftp_accounts?: number;
+    max_cron_jobs?: number;
+    price_monthly?: number;
+    price_yearly?: number;
+    is_active?: boolean;
+    is_default?: boolean;
+    sort_order?: number;
 }
 
 // File Interface
@@ -144,6 +237,10 @@ export interface Domain {
     document_root: string;
     is_active: boolean;
     ssl_enabled: boolean;
+    ssl_status?: string;
+    ssl_provider?: string | null;
+    ssl_expiry_at?: string | null;
+    modsecurity_enabled?: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -173,6 +270,40 @@ export interface DnsRecord {
     priority?: number;
     created_at: string;
     updated_at: string;
+}
+
+// System Tools
+export interface ResourceUsage {
+    cpu: number;
+    memory: number;
+    disk: number;
+    processes: ProcessInfo[];
+}
+
+export interface ProcessInfo {
+    pid: number;
+    name: number;
+    cpu: number;
+    memory: number;
+}
+
+export interface NpmPackage {
+    name: string;
+    version: string;
+    type: string;
+    hasUpdate?: boolean; // Frontend helper
+    latest?: string; // Frontend helper
+}
+
+export interface Pm2Process {
+    pid: number;
+    name: string;
+    pm_id: number;
+    status: string; // online, stopped, errored
+    memory: number;
+    cpu: number;
+    uptime: number;
+    restarts: number;
 }
 
 // Database Interface
@@ -217,6 +348,10 @@ export interface DomainResponse {
     document_root: string;
     is_active: boolean;
     ssl_enabled: boolean;
+    ssl_status?: string;
+    ssl_provider?: string | null;
+    ssl_expiry_at?: string | null;
+    modsecurity_enabled?: boolean;
     created_at: string;
     updated_at: string;
 }

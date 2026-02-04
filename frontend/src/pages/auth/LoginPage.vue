@@ -12,9 +12,11 @@ const authStore = useAuthStore()
 
 const isLoading = ref(false)
 const errorMessage = ref('')
+const requiresTwoFa = ref(false)
 const form = ref({
   username_or_email: '',
   password: '',
+  two_fa_code: '',
 })
 
 const handleLogin = async () => {
@@ -24,15 +26,31 @@ const handleLogin = async () => {
   try {
     const success = await authStore.login({
       username_or_email: form.value.username_or_email,
-      password: form.value.password
+      password: form.value.password,
+      two_fa_code: requiresTwoFa.value ? form.value.two_fa_code : undefined,
     })
     
     if (success) {
-      router.push('/dashboard')
+      requiresTwoFa.value = false
+      const userRole = authStore.user?.role || 'user'
+      if (userRole === 'admin' || userRole === 'reseller') {
+        router.push('/admin')
+      } else {
+        router.push('/dashboard')
+      }
     }
   } catch (error: any) {
     console.error('Login error:', error)
-    errorMessage.value = error.response?.data?.message || 'Invalid username or password'
+    const errorCode = error.response?.data?.error_code
+    if (errorCode === 'TWO_FACTOR_REQUIRED') {
+      requiresTwoFa.value = true
+      errorMessage.value = 'Masukkan kode 2FA untuk melanjutkan'
+    } else if (errorCode === 'TWO_FACTOR_INVALID') {
+      requiresTwoFa.value = true
+      errorMessage.value = 'Kode 2FA tidak valid'
+    } else {
+      errorMessage.value = error.response?.data?.message || 'Invalid username or password'
+    }
   } finally {
     isLoading.value = false
   }
@@ -100,6 +118,21 @@ const handleLogin = async () => {
                   placeholder="••••••••" 
                   class="bg-slate-50 border-slate-200 h-14 pl-12 rounded-2xl text-slate-900 focus:ring-blue-600/10 focus:border-blue-600 focus:bg-white transition-all font-semibold"
                   required 
+                />
+              </div>
+            </div>
+
+            <div v-if="requiresTwoFa" class="space-y-2">
+              <Label for="twofa" class="text-[11px] uppercase tracking-widest font-bold text-slate-400 ml-1">2FA Code</Label>
+              <div class="relative group">
+                <Lock class="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                <Input
+                  id="twofa"
+                  v-model="form.two_fa_code"
+                  placeholder="6-digit code"
+                  maxlength="6"
+                  class="bg-slate-50 border-slate-200 h-14 pl-12 rounded-2xl text-slate-900 focus:ring-blue-600/10 focus:border-blue-600 focus:bg-white transition-all font-semibold tracking-widest"
+                  required
                 />
               </div>
             </div>

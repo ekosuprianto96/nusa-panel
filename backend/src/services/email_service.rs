@@ -12,7 +12,7 @@ use crate::errors::{ApiError, ApiResult};
 use crate::models::{
     Autoresponder, AutoresponderResponse, CreateAutoresponderRequest, CreateEmailAccountRequest,
     CreateEmailForwarderRequest, Domain, EmailAccount, EmailAccountResponse, EmailForwarder,
-    EmailForwarderResponse, UpdateAutoresponderRequest, UpdateEmailAccountRequest,
+    EmailForwarderResponse, Package, UpdateAutoresponderRequest, UpdateEmailAccountRequest,
 };
 use crate::utils::password;
 
@@ -20,6 +20,32 @@ use crate::utils::password;
 pub struct EmailService;
 
 impl EmailService {
+    async fn get_user_package(pool: &MySqlPool, user_id: &str) -> ApiResult<Package> {
+        let package = sqlx::query_as::<_, Package>(
+            r#"
+            SELECT p.* FROM users u
+            JOIN packages p ON u.package_id = p.id
+            WHERE u.id = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        match package {
+            Some(pkg) => Ok(pkg),
+            None => {
+                let fallback = sqlx::query_as::<_, Package>(
+                    "SELECT * FROM packages WHERE is_default = TRUE AND is_active = TRUE LIMIT 1",
+                )
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| ApiError::NotFound("Default package".to_string()))?;
+                Ok(fallback)
+            }
+        }
+    }
     // ==========================================
     // EMAIL ACCOUNT OPERATIONS
     // ==========================================
@@ -84,6 +110,22 @@ impl EmailService {
 
         if domain.user_id != user_id {
             return Err(ApiError::Forbidden);
+        }
+
+        let package = Self::get_user_package(pool, user_id).await?;
+        if package.max_email_accounts > 0 {
+            let existing = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM email_accounts WHERE user_id = ?",
+            )
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+
+            if existing >= package.max_email_accounts as i64 {
+                return Err(ApiError::ValidationError(
+                    "Limit email account paket tercapai".to_string(),
+                ));
+            }
         }
 
         // Build email address

@@ -17,7 +17,7 @@ use crate::config::CONFIG;
 use crate::errors::{ApiError, ApiResult};
 use crate::models::{
     CreateDatabaseRequest, CreateDatabaseUserRequest, DatabaseUser, DatabaseUserResponse,
-    ManagedDatabase, ManagedDatabaseResponse, PhpMyAdminInfo, UpdateDatabaseRequest,
+    ManagedDatabase, ManagedDatabaseResponse, Package, PhpMyAdminInfo, UpdateDatabaseRequest,
     UpdateDatabaseUserRequest, SUPPORTED_CHARSETS, SUPPORTED_COLLATIONS,
 };
 use crate::utils::password;
@@ -26,6 +26,32 @@ use crate::utils::password;
 pub struct DatabaseService;
 
 impl DatabaseService {
+    async fn get_user_package(pool: &MySqlPool, user_id: &str) -> ApiResult<Package> {
+        let package = sqlx::query_as::<_, Package>(
+            r#"
+            SELECT p.* FROM users u
+            JOIN packages p ON u.package_id = p.id
+            WHERE u.id = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        match package {
+            Some(pkg) => Ok(pkg),
+            None => {
+                let fallback = sqlx::query_as::<_, Package>(
+                    "SELECT * FROM packages WHERE is_default = TRUE AND is_active = TRUE LIMIT 1",
+                )
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| ApiError::NotFound("Default package".to_string()))?;
+                Ok(fallback)
+            }
+        }
+    }
     // ==========================================
     // DATABASE OPERATIONS
     // ==========================================
@@ -102,6 +128,22 @@ impl DatabaseService {
         request
             .validate()
             .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+        let package = Self::get_user_package(pool, user_id).await?;
+        if package.max_databases > 0 {
+            let existing = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM managed_databases WHERE user_id = ?",
+            )
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+
+            if existing >= package.max_databases as i64 {
+                return Err(ApiError::ValidationError(
+                    "Limit database paket tercapai".to_string(),
+                ));
+            }
+        }
 
         // Generate prefixed database name (userid_dbname)
         // Use first 8 chars of user_id to keep name short
@@ -469,6 +511,9 @@ impl DatabaseService {
 
         // Hash password for storage (for reference only, MySQL has its own hash)
         let password_hash = password::hash_password(&request.password)?;
+        
+        // Encrypt password for SSO (reversible encryption)
+        let password_encrypted = password::encrypt_password(&request.password)?;
 
         // Record in database_users table
         let db_user_id = Uuid::new_v4().to_string();
@@ -476,8 +521,8 @@ impl DatabaseService {
 
         sqlx::query(
             r#"
-            INSERT INTO database_users (id, user_id, database_id, db_username, password_hash, host, privileges, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+            INSERT INTO database_users (id, user_id, database_id, db_username, password_hash, password_encrypted, host, privileges, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
             "#,
         )
         .bind(&db_user_id)
@@ -485,6 +530,7 @@ impl DatabaseService {
         .bind(&request.database_id.clone().filter(|id| !id.is_empty()))
         .bind(&db_username)
         .bind(&password_hash)
+        .bind(&password_encrypted)
         .bind(&host)
         .bind(&privileges)
         .bind(now)
@@ -583,6 +629,13 @@ impl DatabaseService {
         } else {
             db_user.password_hash.clone()
         };
+        
+        // Encrypt password for SSO if password was changed
+        let password_encrypted = if let Some(ref new_password) = request.password {
+            Some(password::encrypt_password(new_password)?)
+        } else {
+            db_user.password_encrypted.clone()
+        };
 
         let is_active = request.is_active.unwrap_or(db_user.is_active);
         let privileges = request.privileges.clone().unwrap_or(db_user.privileges.clone()); // Use new privs or existing
@@ -617,9 +670,10 @@ impl DatabaseService {
         }
 
         sqlx::query(
-            "UPDATE database_users SET password_hash = ?, privileges = ?, is_active = ?, updated_at = ? WHERE id = ?",
+            "UPDATE database_users SET password_hash = ?, password_encrypted = ?, privileges = ?, is_active = ?, updated_at = ? WHERE id = ?",
         )
         .bind(&password_hash)
+        .bind(&password_encrypted)
         .bind(&privileges)
         .bind(is_active)
         .bind(Utc::now())

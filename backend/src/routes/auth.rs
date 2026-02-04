@@ -8,13 +8,14 @@ use rocket::{get, post, routes, Route, State};
 
 use crate::database::Database;
 use crate::errors::ApiResult;
-use crate::guards::AuthenticatedUser;
+use crate::guards::{AuthenticatedUser, RequestInfo};
 use crate::models::{
     ChangePasswordRequest, CreateUserRequest, LoginRequest, RefreshTokenRequest, UserResponse,
 };
 use crate::services::AuthService;
-use crate::utils::jwt::TokenPair;
+use crate::utils::jwt::{TokenPair, validate_access_token};
 use crate::utils::response::{success, success_message, ApiResponse};
+use crate::services::SecurityService;
 
 /// Register user baru
 ///
@@ -55,9 +56,23 @@ pub async fn register(
 #[post("/login", format = "json", data = "<request>")]
 pub async fn login(
     db: &State<Database>,
+    req_info: RequestInfo,
     request: Json<LoginRequest>,
 ) -> ApiResult<Json<ApiResponse<TokenPair>>> {
     let tokens = AuthService::login(db.get_pool(), request.into_inner()).await?;
+    if let Ok(claims) = validate_access_token(&tokens.access_token) {
+        SecurityService::log_event(
+            db.get_pool(),
+            Some(&claims.sub),
+            "auth_login_success",
+            req_info.ip_address.as_deref(),
+            Some(&claims.username),
+            Some("success"),
+            req_info.user_agent.as_deref(),
+        )
+        .await
+        .ok();
+    }
     Ok(success(tokens))
 }
 

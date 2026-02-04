@@ -1,6 +1,7 @@
 import { authService } from './auth.service';
 import { fileService } from './file.service';
 import { userService } from './user.service';
+import { packageService } from './package.service';
 import { systemService } from './system.service';
 import { domainService } from './domain.service';
 import { databaseService } from './database.service';
@@ -20,6 +21,7 @@ export {
     authService,
     fileService,
     userService,
+    packageService,
     systemService,
     domainService,
     databaseService,
@@ -37,6 +39,7 @@ export default {
     auth: authService,
     files: fileService,
     users: userService,
+    packages: packageService,
     system: systemService,
     domains: domainService,
     databases: databaseService,
@@ -48,3 +51,4 @@ export default {
     emails: emailService,
     nodejs: nodejsService,
 };
+

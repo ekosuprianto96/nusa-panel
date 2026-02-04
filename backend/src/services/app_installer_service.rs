@@ -10,7 +10,10 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::errors::{ApiError, ApiResult};
-use crate::models::{AppType, CreateDatabaseRequest, Domain, InstallAppRequest, InstallAppResponse};
+use crate::models::{
+    AppInstallationResponse, AppType, CreateDatabaseRequest, Domain, InstallAppRequest,
+    InstallAppResponse,
+};
 use crate::services::DatabaseService;
 
 pub struct AppInstallerService;
@@ -100,15 +103,68 @@ impl AppInstallerService {
             .output()
             .map_err(|e| ApiError::InternalError(format!("Failed to chown: {}", e)))?;
 
-        Ok(InstallAppResponse {
+        let response = InstallAppResponse {
             success: true,
             message: format!("{:?} installed successfully", request.app_type),
             app_url: format!("http://{}/{}", domain.domain_name, request.install_path.clone().unwrap_or_default()),
-            admin_url: format!("http://{}/{}/wp-admin", domain.domain_name, request.install_path.unwrap_or_default()),
+            admin_url: format!("http://{}/{}/wp-admin", domain.domain_name, request.install_path.clone().unwrap_or_default()),
             db_name: db_info.db_name,
             db_user: db_user_req, // In real flow, this should come from db service response
             db_pass,
-        })
+        };
+
+        // 6. Save installation record
+        let install_path = request.install_path.clone().unwrap_or_default();
+        let app_type = Self::app_type_to_string(&request.app_type);
+        let version = "latest";
+
+        sqlx::query(
+            r#"
+            INSERT INTO app_installations (id, user_id, domain_id, app_type, version, install_path, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(user_id)
+        .bind(&domain.id)
+        .bind(app_type)
+        .bind(version)
+        .bind(&install_path)
+        .execute(pool)
+        .await?;
+
+        Ok(response)
+    }
+
+    /// List installations untuk user
+    pub async fn list_installations_by_user(
+        pool: &MySqlPool,
+        user_id: &str,
+    ) -> ApiResult<Vec<AppInstallationResponse>> {
+        let installations = sqlx::query_as::<_, AppInstallationResponse>(
+            r#"
+            SELECT ai.id, ai.user_id, ai.domain_id, d.domain_name, ai.app_type, ai.version, ai.status,
+                   ai.install_path, ai.created_at as installed_at
+            FROM app_installations ai
+            JOIN domains d ON d.id = ai.domain_id
+            WHERE ai.user_id = ?
+            ORDER BY ai.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(installations)
+    }
+
+    fn app_type_to_string(app_type: &AppType) -> String {
+        match app_type {
+            AppType::WordPress => "wordpress",
+            AppType::Laravel => "laravel",
+            AppType::Joomla => "joomla",
+        }
+        .to_string()
     }
 
     async fn install_wordpress(

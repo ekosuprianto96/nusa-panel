@@ -16,6 +16,10 @@ export const domainService = {
   listDomains: (page: number = 1, perPage: number = 10) => 
     api.get<PaginatedResponse<DomainResponse>>('/domains', { params: { page, per_page: perPage } }),
 
+  // Admin/Reseller: list domains by user
+  listDomainsByUser: (userId: string, page: number = 1, perPage: number = 200) =>
+    api.get<PaginatedResponse<DomainResponse>>(`/domains/admin/user/${userId}`, { params: { page, per_page: perPage } }),
+
   getDomain: (id: string) => 
     api.get<ApiResponse<DomainResponse>>(`/domains/${id}`),
 
@@ -24,6 +28,10 @@ export const domainService = {
 
   updateDomain: (id: string, data: { document_root?: string, is_active?: boolean }) => 
     api.put<ApiResponse<DomainResponse>>(`/domains/${id}`, data),
+
+  // Admin/Reseller: suspend/unsuspend domain
+  updateDomainStatusAdmin: (id: string, data: { is_active: boolean }) =>
+    api.put<ApiResponse<DomainResponse>>(`/domains/admin/domains/${id}/status`, data),
 
   deleteDomain: (id: string) => 
     api.delete<ApiResponse<void>>(`/domains/${id}`),

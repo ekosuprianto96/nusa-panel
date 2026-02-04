@@ -3,13 +3,16 @@
 //! Route handlers untuk user management.
 
 use rocket::serde::json::Json;
-use rocket::{delete, get, put, routes, FromForm, Route, State};
+use rocket::{delete, get, post, put, routes, FromForm, Route, State};
 use serde::Deserialize;
 
 use crate::database::Database;
 use crate::errors::ApiResult;
 use crate::guards::{AdminUser, AuthenticatedUser};
-use crate::models::{UpdateUserRequest, UserResponse};
+use crate::models::{
+    AdminUserStats, AssignPackageRequest, CreateUserByAdminRequest, UpdateUserRequest,
+    UserResponse, UserResourceUsage,
+};
 use crate::services::UserService;
 use crate::utils::response::{paginated, success, success_message, ApiResponse, PaginatedResponse};
 
@@ -58,6 +61,55 @@ pub async fn list_users(
 
     let (users, total) = UserService::get_all(db.get_pool(), page, per_page).await?;
     Ok(paginated(users, total, page, per_page))
+}
+
+/// Admin dashboard user stats
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+#[get("/stats")]
+pub async fn get_admin_user_stats(
+    db: &State<Database>,
+    _admin: AdminUser,
+) -> ApiResult<Json<ApiResponse<AdminUserStats>>> {
+    let stats = UserService::get_admin_stats(db.get_pool()).await?;
+    Ok(success(stats))
+}
+
+/// Create user (Admin/Reseller only)
+///
+/// Admin dapat create user dengan role apapun kecuali admin.
+/// Reseller hanya dapat create user dengan role 'user'.
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Request Body
+/// ```json
+/// {
+///   "username": "newuser",
+///   "email": "user@example.com",
+///   "password": "securepassword123",
+///   "first_name": "John",
+///   "last_name": "Doe",
+///   "role": "user",
+///   "package_id": "pkg-xxxx"
+/// }
+/// ```
+#[post("/", format = "json", data = "<request>")]
+pub async fn create_user(
+    db: &State<Database>,
+    creator: AuthenticatedUser,
+    request: Json<CreateUserByAdminRequest>,
+) -> ApiResult<Json<ApiResponse<UserResponse>>> {
+    let user = UserService::create_by_admin(
+        db.get_pool(),
+        request.into_inner(),
+        &creator.id,
+        &creator.role,
+    )
+    .await?;
+    Ok(success(user))
 }
 
 /// Get user by ID
@@ -193,7 +245,7 @@ pub async fn update_user_role(
 /// Untuk saat ini mengembalikan placeholder data.
 #[get("/<id>/usage")]
 pub async fn get_user_usage(
-    _db: &State<Database>,
+    db: &State<Database>,
     user: AuthenticatedUser,
     id: &str,
 ) -> ApiResult<Json<ApiResponse<UserResourceUsage>>> {
@@ -202,47 +254,48 @@ pub async fn get_user_usage(
         return Err(crate::errors::ApiError::Forbidden);
     }
 
-    // TODO: Implement actual resource tracking
-    let usage = UserResourceUsage {
-        disk_used_mb: 0,
-        disk_limit_mb: 10240, // 10GB default
-        bandwidth_used_mb: 0,
-        bandwidth_limit_mb: 102400, // 100GB default
-        domains_count: 0,
-        domains_limit: 10,
-        databases_count: 0,
-        databases_limit: 10,
-        email_accounts_count: 0,
-        email_accounts_limit: 50,
-    };
+    let usage = crate::services::UserService::get_resource_usage(db.get_pool(), id).await?;
 
     Ok(success(usage))
 }
 
-/// Resource usage data untuk user
-#[derive(Debug, serde::Serialize)]
-pub struct UserResourceUsage {
-    pub disk_used_mb: i64,
-    pub disk_limit_mb: i64,
-    pub bandwidth_used_mb: i64,
-    pub bandwidth_limit_mb: i64,
-    pub domains_count: i32,
-    pub domains_limit: i32,
-    pub databases_count: i32,
-    pub databases_limit: i32,
-    pub email_accounts_count: i32,
-    pub email_accounts_limit: i32,
+/// Assign package to user (Admin only)
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Path Parameters
+/// - id: User ID
+///
+/// # Request Body
+/// ```json
+/// {
+///   "package_id": "pkg-xxxx"
+/// }
+/// ```
+#[put("/<id>/package", format = "json", data = "<request>")]
+pub async fn assign_user_package(
+    db: &State<Database>,
+    _admin: AdminUser,
+    id: &str,
+    request: Json<AssignPackageRequest>,
+) -> ApiResult<Json<ApiResponse<UserResponse>>> {
+    let user = UserService::assign_package(db.get_pool(), id, request.into_inner()).await?;
+    Ok(success(user))
 }
 
 /// Mendapatkan routes untuk users
 pub fn user_routes() -> Vec<Route> {
     routes![
         list_users,
+        get_admin_user_stats,
+        create_user,
         get_user,
         update_user,
         delete_user,
         update_user_status,
         update_user_role,
+        assign_user_package,
         get_user_usage
     ]
 }

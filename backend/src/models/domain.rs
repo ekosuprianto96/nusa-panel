@@ -85,6 +85,18 @@ pub struct Domain {
     /// SSL enabled
     pub ssl_enabled: bool,
 
+    /// SSL status (active, expiring, inactive)
+    pub ssl_status: String,
+
+    /// SSL provider (Let's Encrypt, etc)
+    pub ssl_provider: Option<String>,
+
+    /// SSL expiry date
+    pub ssl_expiry_at: Option<DateTime<Utc>>,
+
+    /// ModSecurity enabled
+    pub modsecurity_enabled: bool,
+
     /// Waktu pembuatan
     pub created_at: DateTime<Utc>,
 
@@ -101,6 +113,10 @@ pub struct DomainResponse {
     pub document_root: String,
     pub is_active: bool,
     pub ssl_enabled: bool,
+    pub ssl_status: String,
+    pub ssl_provider: Option<String>,
+    pub ssl_expiry_at: Option<DateTime<Utc>>,
+    pub modsecurity_enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// Jumlah subdomain
@@ -118,6 +134,10 @@ impl From<Domain> for DomainResponse {
             document_root: domain.document_root,
             is_active: domain.is_active,
             ssl_enabled: domain.ssl_enabled,
+            ssl_status: domain.ssl_status,
+            ssl_provider: domain.ssl_provider,
+            ssl_expiry_at: domain.ssl_expiry_at,
+            modsecurity_enabled: domain.modsecurity_enabled,
             created_at: domain.created_at,
             updated_at: domain.updated_at,
             subdomains_count: 0,
@@ -157,6 +177,13 @@ pub struct UpdateDomainRequest {
 
     /// Status aktif
     pub is_active: Option<bool>,
+}
+
+/// DTO untuk update status domain (Admin/Reseller)
+#[derive(Debug, Deserialize)]
+pub struct UpdateDomainStatusRequest {
+    /// Status aktif domain
+    pub is_active: bool,
 }
 
 /// Subdomain entity dari database

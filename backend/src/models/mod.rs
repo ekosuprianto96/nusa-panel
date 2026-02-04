@@ -12,9 +12,11 @@ pub mod phpmyadmin_signon;
 pub mod redis;
 pub mod security;
 pub mod system;
+pub mod package;
 pub mod user;
 pub mod web_server;
 
+pub use package::*;
 pub use app_installer::*;
 pub use domain::*;
 pub use email::*;

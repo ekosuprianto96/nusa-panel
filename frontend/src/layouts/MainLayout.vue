@@ -1,292 +1,403 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import ThemeToggle from '@/components/ui/ThemeToggle.vue'
 import { 
-  BarChart3, Folder, Database, Globe, 
-  Mail, Shield, Search, LogOut, Plus,
-  Settings
+  Mail, Shield, Search, LogOut,
+  Settings, Menu, Folder, Database, Globe,
+  LayoutDashboard, Server, Zap, Users, Package
+
 } from 'lucide-vue-next'
 
+import { features, type DashboardCard } from '@/config/features'
+import { adminFeatures } from '@/config/admin-features'
+import ToastContainer from '@/components/ui/ToastContainer.vue'
+
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+const userRole = computed(() => authStore.user?.role || 'user')
+const isAdmin = computed(() => ['admin', 'reseller'].includes(userRole.value))
+
+const isSidebarOpen = ref(true)
 const searchQuery = ref('')
+const isMobile = ref(false)
 
 onMounted(async () => {
+  checkScreenSize()
+  window.addEventListener('resize', checkScreenSize)
+  
   if (!authStore.user && authStore.accessToken) {
     await authStore.fetchMe()
   }
 })
 
-/**
- * Handle user logout
- */
+const checkScreenSize = () => {
+  isMobile.value = window.innerWidth < 1024
+  if (isMobile.value) {
+    isSidebarOpen.value = false
+  } else {
+    isSidebarOpen.value = true
+  }
+}
+
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value
+}
+
 const handleLogout = (): void => {
   authStore.logout()
   router.push('/auth/login')
 }
 
 /**
- * Item navigasi utama
+ * Search Logic
  */
+const filteredFeatures = computed(() => {
+  if (!searchQuery.value) return []
+  
+  const query = searchQuery.value.toLowerCase() // English consistency
+  const results: DashboardCard[] = []
+  const activeFeatures = isAdmin.value ? adminFeatures : features
+
+  activeFeatures.forEach(section => {
+    section.cards.forEach(card => {
+      if (
+        card.title.toLowerCase().includes(query) || 
+        (card.description && card.description.toLowerCase().includes(query))
+      ) {
+        results.push(card)
+      }
+    })
+  })
+
+  return results
+})
+
+const handleSearchClick = (feature: DashboardCard) => {
+  if (feature.link) {
+    router.push(feature.link)
+    searchQuery.value = '' // Clear search after navigation
+  }
+}
+
+// Navigation structure
+interface NavGroup {
+  title: string
+  items: NavItem[]
+}
+
 interface NavItem {
   name: string
   icon: any
   path: string
   openNewTab?: boolean
+  badge?: string
+  roles?: string[]  // Roles that can access this menu. Empty/undefined = all roles
 }
 
-const mainNav: NavItem[] = [
-  { name: 'Dashboard', icon: BarChart3, path: '/dashboard' },
+const navigation: NavGroup[] = [
+  ...(isAdmin.value
+    ? [
+        {
+          title: 'Overview',
+          items: [
+            { name: 'Admin Dashboard', icon: LayoutDashboard, path: '/admin' },
+          ],
+        },
+        {
+          title: 'Administration',
+          items: [
+            { name: 'Users', icon: Users, path: '/dashboard/users', roles: ['admin', 'reseller'] },
+            { name: 'Packages', icon: Package, path: '/dashboard/packages', roles: ['admin'] },
+          ],
+        },
+        {
+          title: 'Server',
+          items: [
+            { name: 'Web Server', icon: Zap, path: '/dashboard/web-server', roles: ['admin', 'reseller'] },
+          ],
+        },
+      ]
+    : [
+        {
+          title: 'Overview',
+          items: [
+            { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          ],
+        },
+        {
+          title: 'Management',
+          items: [
+            { name: 'File Manager', icon: Folder, path: '/file-manager', openNewTab: true },
+            { name: 'Databases', icon: Database, path: '/dashboard/databases' },
+            { name: 'Domains', icon: Globe, path: '/dashboard/domains' },
+            { name: 'Email Accounts', icon: Mail, path: '/dashboard/emails' },
+          ],
+        },
+        {
+          title: 'Server & Security',
+          items: [
+            { name: 'Security', icon: Shield, path: '/dashboard/security' },
+            { name: 'System', icon: Settings, path: '/dashboard/system' },
+            { name: 'Apps', icon: Server, path: '/dashboard/apps' },
+          ],
+        },
+      ])
 ]
 
-const managementNav: NavItem[] = [
-  { name: 'Files', icon: Folder, path: '/file-manager', openNewTab: true },
-  { name: 'Databases', icon: Database, path: '/dashboard/databases' },
-  { name: 'Domains', icon: Globe, path: '/dashboard/domains' },
-  { name: 'Email', icon: Mail, path: '/dashboard/emails' },
-  { name: 'Security', icon: Shield, path: '/dashboard/security' },
-  { name: 'System', icon: Settings, path: '/dashboard/system' },
-]
+// Filter navigation based on user role
+const filteredNavigation = computed(() => {
+  const role = userRole.value
+  return navigation
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => {
+        // If no roles specified, show to all
+        if (!item.roles || item.roles.length === 0) return true
+        // Check if user role is in allowed roles
+        return item.roles.includes(role)
+      })
+    }))
+    .filter(group => group.items.length > 0)  // Remove empty groups
+})
 
-/**
- * Handle navigasi item - bisa open new tab atau router push
- */
 const handleNavClick = (item: NavItem): void => {
   if (item.openNewTab) {
     window.open(item.path, '_blank')
   } else {
     router.push(item.path)
+    if (isMobile.value) isSidebarOpen.value = false
   }
 }
 
-/**
- * Statistik resource usage dari user data
- */
-const stats = computed(() => {
-  const usage = authStore.user?.usage
-  return [
-    { 
-      label: 'Disk Usage', 
-      value: usage ? `${(usage.disk_used_mb / 1024).toFixed(1)} GB / ${(usage.disk_limit_mb / 1024).toFixed(0)} GB` : '0 / 0 GB', 
-      color: 'bg-blue-500', 
-      percent: usage ? (usage.disk_used_mb / usage.disk_limit_mb) * 100 : 0 
-    },
-    { 
-      label: 'Bandwidth', 
-      value: usage ? `${(usage.bandwidth_used_mb / 1024).toFixed(0)} GB / ${(usage.bandwidth_limit_mb / 1024).toFixed(0)} GB` : '0 / 0 GB', 
-      color: 'bg-emerald-500', 
-      percent: usage ? (usage.bandwidth_used_mb / usage.bandwidth_limit_mb) * 100 : 0 
-    },
-    { 
-      label: 'MySQL Disk Usage', 
-      value: usage ? `${usage.databases_count} DBs` : '0 DBs', 
-      color: 'bg-amber-500', 
-      percent: usage ? (usage.databases_count / usage.databases_limit) * 100 : 0 
-    },
-    { 
-      label: 'Email Accounts', 
-      value: usage ? `${usage.email_accounts_count} / ${usage.email_accounts_limit}` : '0 / 0', 
-      color: 'bg-pink-500', 
-      percent: usage ? (usage.email_accounts_count / usage.email_accounts_limit) * 100 : 0 
-    },
-  ]
-})
 
-/**
- * Info server (demo data, bisa diganti dari API)
- */
-const serverInfo = [
-  { label: 'STATUS', value: 'Operational', type: 'badge' },
-  { label: 'Domain', value: authStore.user?.email?.split('@')[1] || 'mysite.com', type: 'text' },
-  { label: 'IP Address', value: '192.168.1.42', type: 'text' },
-  { label: 'Server Name', value: 'srv-alpha-01', type: 'text' }
-]
 
-/**
- * Breadcrumb dari current route
- */
+// Breadcrumbs
 const breadcrumb = computed(() => {
-  const path = router.currentRoute.value.path
-  const parts = path.split('/').filter(p => p)
-  return parts.map((p, i) => ({
-    name: p.charAt(0).toUpperCase() + p.slice(1),
-    isLast: i === parts.length - 1
-  }))
+  const path = route.path
+  if (path === '/dashboard') return [{ name: 'Dashboard', isLast: true }]
+  if (path === '/admin') return [{ name: 'Admin', isLast: true }]
+  
+  const isAdminRoute = path.startsWith('/admin')
+  const parts = path.split('/').filter(p => p && p !== 'dashboard' && p !== 'admin')
+  return [
+    { name: isAdminRoute ? 'Admin' : 'Dashboard', isLast: false },
+    ...parts.map((p, i) => ({
+      name: p.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      isLast: i === parts.length - 1
+    }))
+  ]
 })
 </script>
 
 <template>
-  <div class="flex h-screen overflow-hidden bg-background text-foreground font-sans transition-colors duration-300">
+  <div class="flex h-screen overflow-hidden bg-background text-foreground font-sans">
     
-    <!-- Slim Left Sidebar -->
-    <aside class="w-20 flex-shrink-0 bg-card border-r border-border flex flex-col hidden lg:flex items-center py-6 gap-8 transition-colors duration-300">
+    <!-- Sidebar Backdrop (Mobile) -->
+    <div 
+      v-if="isMobile && isSidebarOpen" 
+      class="fixed inset-0 bg-background/80 backdrop-blur-sm z-30 lg:hidden"
+      @click="isSidebarOpen = false"
+    />
+
+    <!-- Sidebar -->
+    <aside 
+      :class="[
+        'fixed lg:static inset-y-0 left-0 z-40 bg-card border-r border-border transition-all duration-300 flex flex-col',
+        isSidebarOpen ? 'w-64 translate-x-0' : 'w-0 lg:w-20 -translate-x-full lg:translate-x-0'
+      ]"
+    >
       <!-- Logo -->
-      <div class="flex items-center justify-center">
-        <div class="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
-          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-          </svg>
+      <div class="h-16 flex items-center px-6 border-b border-border shadow-sm">
+        <div class="flex items-center gap-3 overflow-hidden">
+          <div class="w-8 h-8 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-primary/20">
+            N
+          </div>
+          <span 
+            :class="['font-bold text-lg tracking-tight transition-opacity duration-300', isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden']"
+          >
+            NusaPanel
+          </span>
         </div>
       </div>
 
-      <!-- Nav Items -->
-      <nav class="flex-1 flex flex-col items-center gap-4">
-        <button
-          v-for="item in [...mainNav, ...managementNav]"
-          :key="item.name"
-          @click="handleNavClick(item)"
-          :title="item.name"
-          :class="[
-            'p-3 rounded-xl transition-all duration-200 group relative',
-            router.currentRoute.value.path.startsWith(item.path) 
-              ? 'bg-primary/10 text-primary' 
-              : 'text-muted-foreground hover:bg-muted hover:text-primary'
-          ]"
-        >
-          <component :is="item.icon" class="w-5 h-5" />
-          <!-- Active Indicator -->
-          <div 
-            v-if="router.currentRoute.value.path.startsWith(item.path)" 
-            class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full"
-          />
-        </button>
+      <!-- Navigation -->
+      <nav class="flex-1 overflow-y-auto py-6 px-3 custom-scrollbar flex flex-col gap-6">
+        <div v-for="group in filteredNavigation" :key="group.title">
+          <h3 
+            v-if="isSidebarOpen"
+            class="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider animate-in fade-in"
+          >
+            {{ group.title }}
+          </h3>
+          <div class="space-y-1">
+            <button
+              v-for="item in group.items"
+              :key="item.name"
+              @click="handleNavClick(item)"
+              :title="!isSidebarOpen ? item.name : ''"
+              :class="[
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative',
+                route.path.startsWith(item.path) && item.path !== '/' 
+                  ? 'bg-primary/10 text-primary' 
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              ]"
+            >
+              <component :is="item.icon" class="w-5 h-5 flex-shrink-0" />
+              <span 
+                :class="['whitespace-nowrap transition-all duration-300', isSidebarOpen ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4 absolute left-10 lg:hidden']"
+              >
+                {{ item.name }}
+              </span>
+              
+              <!-- Active Indicator (Collapsed) -->
+              <div 
+                v-if="!isSidebarOpen && route.path.startsWith(item.path)" 
+                class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full"
+              />
+            </button>
+          </div>
+        </div>
       </nav>
 
-      <!-- Bottom Actions -->
-      <div class="flex flex-col items-center gap-3">
-        <!-- Theme Toggle -->
-        <ThemeToggle />
-        
-        <!-- Logout -->
-        <button 
-          @click="handleLogout"
-          title="Logout"
-          class="p-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all"
+      <!-- User Profile (Bottom) -->
+      <div class="p-4 border-t border-border mt-auto">
+        <div 
+          class="flex items-center gap-3 p-2 rounded-xl hover:bg-muted transition-colors cursor-pointer"
+          @click="toggleSidebar"
         >
-          <LogOut class="w-5 h-5" />
-        </button>
+          <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center text-white font-bold text-xs ring-2 ring-background">
+            {{ authStore.user?.username?.substring(0, 2).toUpperCase() || 'US' }}
+          </div>
+          <div :class="['flex-1 overflow-hidden transition-all duration-300', isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 lg:hidden']">
+            <p class="text-sm font-semibold truncate">{{ authStore.user?.username || 'User' }}</p>
+            <p class="text-xs text-muted-foreground truncate">{{ authStore.user?.email || 'user@example.com' }}</p>
+          </div>
+          <ThemeToggle v-if="isSidebarOpen" />
+        </div>
       </div>
     </aside>
 
-    <!-- Main Section -->
-    <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-      <!-- Header -->
-      <header class="h-16 flex items-center justify-between px-8 shrink-0 z-20 border-b border-border bg-card transition-colors duration-300">
-        <!-- Breadcrumb -->
-        <div class="flex items-center gap-2 text-sm">
-          <span class="text-muted-foreground">Home</span>
-          <template v-for="(crumb, idx) in breadcrumb" :key="idx">
-            <span class="text-muted-foreground/50">/</span>
-            <span :class="crumb.isLast ? 'text-foreground font-semibold' : 'text-muted-foreground'">
-              {{ crumb.name }}
-            </span>
-          </template>
+    <!-- Main Content wrapper -->
+    <div class="flex-1 flex flex-col min-w-0 bg-background transition-all duration-300">
+      
+      <!-- Top Header -->
+      <header class="h-16 border-b border-border bg-card/50 backdrop-blur sticky top-0 z-20 px-4 lg:px-8 flex items-center justify-between gap-4">
+        
+        <!-- Left: Toggle & Breadcrumbs -->
+        <div class="flex items-center gap-4">
+          <button 
+            @click="toggleSidebar"
+            class="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+          >
+            <Menu class="w-5 h-5" />
+          </button>
+
+          <div class="hidden md:flex items-center gap-2 text-sm">
+            <template v-for="(crumb, idx) in breadcrumb" :key="idx">
+              <span v-if="idx > 0" class="text-muted-foreground/40">/</span>
+              <span :class="crumb.isLast ? 'text-foreground font-medium' : 'text-muted-foreground'">
+                {{ crumb.name }}
+              </span>
+            </template>
+          </div>
         </div>
 
-        <!-- Center Search -->
-        <div class="max-w-xl w-full mx-8 hidden md:block">
-          <div class="relative w-full group">
-            <Search class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <input
+        <!-- Right: Search & Server Info -->
+        <div class="flex items-center gap-4">
+          <!-- Server IP Badge -->
+          <div class="hidden lg:flex items-center px-3 py-1.5 bg-muted/50 rounded-full border border-border gap-2">
+            <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span class="text-xs font-mono text-muted-foreground">{{ authStore.user?.username ? '192.168.1.42' : 'Connecting...' }}</span>
+          </div>
+
+          <!-- Search -->
+          <div class="relative hidden sm:block">
+            <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input 
               v-model="searchQuery"
-              class="w-full bg-muted border border-border rounded-xl pl-10 pr-12 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none placeholder:text-muted-foreground transition-all"
-              placeholder="Find functions quickly (e.g. 'MySQL', 'Email')..."
-              type="text"
-            />
-            <div class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none px-1.5 py-0.5 bg-muted rounded border border-border text-[10px] font-medium">
-              ⌘K
+              type="text" 
+              placeholder="Search features..." 
+              class="pl-9 pr-4 py-1.5 bg-background border border-border rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none w-64 transition-all"
+            >
+            <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              <kbd class="hidden md:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                <span class="text-xs">⌘</span>K
+              </kbd>
+            </div>
+
+            <!-- Search Results Dropdown -->
+            <div 
+              v-if="searchQuery && filteredFeatures.length > 0"
+              class="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-50 max-h-96 overflow-y-auto"
+            >
+              <div class="p-2 space-y-1">
+                <button
+                  v-for="feature in filteredFeatures"
+                  :key="feature.title"
+                  @click="handleSearchClick(feature)"
+                  class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted text-left transition-colors group"
+                >
+                  <div :class="['p-1.5 rounded-md flex-shrink-0', feature.bgLight || 'bg-background', feature.color]">
+                    <component :is="feature.icon" class="w-4 h-4" />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                      {{ feature.title }}
+                    </p>
+                    <p class="text-[10px] text-muted-foreground truncate">
+                      {{ feature.description }}
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+             <div 
+              v-else-if="searchQuery"
+              class="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl z-50 p-4 text-center text-sm text-muted-foreground"
+            >
+              No results found.
             </div>
           </div>
-        </div>
 
-        <!-- User Profile -->
-        <div class="flex items-center gap-3">
-          <div class="text-right hidden sm:block">
-            <p class="text-sm font-semibold text-foreground leading-none">{{ authStore.user?.username || 'Admin' }}</p>
-            <p class="text-xs text-muted-foreground mt-0.5">{{ authStore.user?.email || 'admin@example.com' }}</p>
-          </div>
-          <div class="w-9 h-9 bg-primary/10 text-primary rounded-full flex items-center justify-center text-sm font-bold border border-primary/20 transition-transform hover:scale-105 cursor-pointer">
-            {{ authStore.user?.username?.substring(0, 2).toUpperCase() || 'AM' }}
-          </div>
+          <!-- Logout -->
+          <button 
+            @click="handleLogout"
+            class="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+            title="Logout"
+          >
+            <LogOut class="w-5 h-5" />
+          </button>
         </div>
       </header>
 
-      <!-- Content Area -->
-      <div class="flex-1 flex overflow-hidden">
-        <div class="flex-1 overflow-y-auto p-8 custom-scrollbar bg-background transition-colors duration-300">
+      <!-- Main Scrollable Area -->
+      <main class="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
+        <div class="max-w-7xl mx-auto space-y-8">
           <slot />
         </div>
+      </main>
 
-        <!-- Right Server Info Panel -->
-        <aside class="w-72 flex-shrink-0 bg-card border-l border-border p-6 overflow-y-auto hidden xl:block custom-scrollbar transition-colors duration-300">
-          <!-- Server Information -->
-          <div class="mb-8">
-            <div class="flex items-center gap-2 mb-6">
-              <div class="p-1.5 bg-primary/10 rounded-lg">
-                <BarChart3 class="w-4 h-4 text-primary" />
-              </div>
-              <h3 class="text-sm font-bold text-foreground">Server Information</h3>
-            </div>
-            
-            <div class="space-y-3">
-              <div v-for="info in serverInfo" :key="info.label" class="flex items-center justify-between text-xs">
-                <span class="text-muted-foreground">{{ info.label }}</span>
-                <span 
-                  v-if="info.type === 'badge'" 
-                  class="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 border border-emerald-500/20"
-                >
-                  <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                  {{ info.value }}
-                </span>
-                <span v-else class="text-foreground font-medium font-mono text-xs">{{ info.value }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Resource Usage -->
-          <div>
-            <h4 class="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-4">Resource Usage</h4>
-            <div class="space-y-5">
-              <div v-for="stat in stats" :key="stat.label">
-                <div class="flex items-center justify-between mb-1.5">
-                  <span class="text-xs text-muted-foreground">{{ stat.label }}</span>
-                  <span class="text-xs font-semibold text-foreground">{{ stat.value }}</span>
-                </div>
-                <div class="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                  <div 
-                    :class="['h-full rounded-full transition-all duration-700', stat.color]" 
-                    :style="{ width: `${Math.min(stat.percent, 100)}%` }"
-                  />
-                </div>
-                <p class="text-[10px] text-muted-foreground mt-1">{{ Math.round(stat.percent || 0) }}% Used</p>
-              </div>
-            </div>
-
-            <button class="w-full mt-8 py-3 px-4 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-[0.98] flex items-center justify-center gap-2">
-              <Plus class="w-4 h-4" />
-              Create New Database
-            </button>
-          </div>
-        </aside>
-      </div>
-    </main>
+    </div>
   </div>
+  <ToastContainer />
 </template>
 
-<style>
+<style scoped>
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
+  background: hsl(var(--muted-foreground) / 0.2);
   border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.3);
+  background: hsl(var(--muted-foreground) / 0.4);
 }
 </style>
+

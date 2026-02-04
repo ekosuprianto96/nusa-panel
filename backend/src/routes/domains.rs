@@ -9,11 +9,12 @@ use serde::Deserialize;
 
 use crate::database::Database;
 use crate::errors::ApiResult;
-use crate::guards::AuthenticatedUser;
+use crate::guards::{AuthenticatedUser, ResellerOrAdmin};
 use crate::models::{
     CreateDnsRecordRequest, CreateDomainRequest, CreateSubdomainRequest, DnsRecordResponse,
     DomainResponse, SubdomainResponse, UpdateDnsRecordRequest, UpdateDomainRequest,
     CreateRedirectRequest, CreateAliasRequest, DomainAlias, Redirect,
+    UpdateDomainStatusRequest,
 };
 use crate::services::DomainService;
 use crate::utils::response::{paginated, success, success_message, ApiResponse, PaginatedResponse};
@@ -52,6 +53,28 @@ pub async fn list_domains(
 
     let result =
         DomainService::get_user_domains(db.get_pool(), &user.id, page, per_page).await?;
+    Ok(paginated(result.items, result.total, page, per_page))
+}
+
+/// List domains for a specific user (Admin/Reseller)
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Path Parameters
+/// - user_id: User ID pemilik domain
+#[get("/admin/user/<user_id>?<params..>")]
+pub async fn list_domains_by_user_admin(
+    db: &State<Database>,
+    _admin: ResellerOrAdmin,
+    user_id: &str,
+    params: DomainPaginationParams,
+) -> ApiResult<Json<PaginatedResponse<DomainResponse>>> {
+    let per_page = params.per_page.min(50).max(1);
+    let page = params.page.max(1);
+
+    let result =
+        DomainService::get_user_domains_admin(db.get_pool(), user_id, page, per_page).await?;
     Ok(paginated(result.items, result.total, page, per_page))
 }
 
@@ -118,6 +141,32 @@ pub async fn update_domain(
 ) -> ApiResult<Json<ApiResponse<DomainResponse>>> {
     let domain =
         DomainService::update(db.get_pool(), id, &user.id, request.into_inner()).await?;
+    Ok(success(domain))
+}
+
+/// Update domain status (Admin/Reseller)
+///
+/// # Headers
+/// - Authorization: Bearer <access_token>
+///
+/// # Path Parameters
+/// - id: Domain ID
+///
+/// # Request Body
+/// ```json
+/// {
+///   "is_active": true
+/// }
+/// ```
+#[put("/admin/domains/<id>/status", format = "json", data = "<request>")]
+pub async fn update_domain_status_admin(
+    db: &State<Database>,
+    _admin: ResellerOrAdmin,
+    id: &str,
+    request: Json<UpdateDomainStatusRequest>,
+) -> ApiResult<Json<ApiResponse<DomainResponse>>> {
+    let domain =
+        DomainService::update_status_by_admin(db.get_pool(), id, request.is_active).await?;
     Ok(success(domain))
 }
 
@@ -415,9 +464,11 @@ pub fn domain_routes() -> Vec<Route> {
     routes![
         // Domain CRUD
         list_domains,
+        list_domains_by_user_admin,
         get_domain,
         create_domain,
         update_domain,
+        update_domain_status_admin,
         delete_domain,
         // Subdomain
         list_subdomains,

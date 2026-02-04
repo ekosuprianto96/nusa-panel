@@ -97,11 +97,29 @@ pub struct User {
     /// Nama belakang
     pub last_name: Option<String>,
 
+    /// Company name
+    pub company: Option<String>,
+
+    /// Phone number
+    pub phone: Option<String>,
+
+    /// Address
+    pub address: Option<String>,
+
     /// Role user
     pub role: String,
 
     /// Status user
     pub status: String,
+
+    /// Preferred PHP version (optional)
+    pub php_version: Option<String>,
+
+    /// Package ID (FK to packages)
+    pub package_id: Option<String>,
+
+    /// Created by user ID (FK to users)
+    pub created_by: Option<String>,
 
     /// Waktu pembuatan
     pub created_at: DateTime<Utc>,
@@ -151,8 +169,38 @@ pub struct UserResponse {
     pub full_name: String,
     pub role: String,
     pub status: String,
+    pub php_version: Option<String>,
+    pub package_id: Option<String>,
+    pub created_by: Option<String>,
+    pub company: Option<String>,
+    pub phone: Option<String>,
+    pub address: Option<String>,
     pub created_at: DateTime<Utc>,
     pub last_login_at: Option<DateTime<Utc>>,
+}
+
+/// Resource usage data untuk user
+#[derive(Debug, Serialize)]
+pub struct UserResourceUsage {
+    pub disk_used_mb: i64,
+    pub disk_limit_mb: i64,
+    pub bandwidth_used_mb: i64,
+    pub bandwidth_limit_mb: i64,
+    pub domains_count: i32,
+    pub domains_limit: i32,
+    pub databases_count: i32,
+    pub databases_limit: i32,
+    pub email_accounts_count: i32,
+    pub email_accounts_limit: i32,
+}
+
+/// Admin dashboard user stats
+#[derive(Debug, Serialize)]
+pub struct AdminUserStats {
+    pub total_users: i64,
+    pub active_users: i64,
+    pub blocked_users: i64,
+    pub new_signups_7d: i64,
 }
 
 impl From<User> for UserResponse {
@@ -166,6 +214,12 @@ impl From<User> for UserResponse {
             last_name: user.last_name,
             role: user.role,
             status: user.status,
+            php_version: user.php_version,
+            package_id: user.package_id,
+            created_by: user.created_by,
+            company: user.company,
+            phone: user.phone,
+            address: user.address,
             created_at: user.created_at,
             last_login_at: user.last_login_at,
         }
@@ -210,6 +264,10 @@ pub struct LoginRequest {
     /// Password
     #[validate(length(min = 1, message = "Password tidak boleh kosong"))]
     pub password: String,
+
+    /// 2FA code (optional)
+    #[validate(length(min = 6, max = 6, message = "Kode 2FA harus 6 digit"))]
+    pub two_fa_code: Option<String>,
 }
 
 /// DTO untuk update user
@@ -226,6 +284,71 @@ pub struct UpdateUserRequest {
     /// Nama belakang (opsional)
     #[validate(length(max = 50, message = "Nama belakang maksimal 50 karakter"))]
     pub last_name: Option<String>,
+
+    /// Company (opsional)
+    #[validate(length(max = 100, message = "Company maksimal 100 karakter"))]
+    pub company: Option<String>,
+
+    /// Phone (opsional)
+    #[validate(length(max = 20, message = "Phone maksimal 20 karakter"))]
+    pub phone: Option<String>,
+
+    /// Address (opsional)
+    pub address: Option<String>,
+}
+
+/// DTO untuk admin/reseller membuat user baru
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateUserByAdminRequest {
+    /// Username (3-30 karakter, alphanumeric dan underscore)
+    #[validate(length(min = 3, max = 30, message = "Username harus 3-30 karakter"))]
+    #[validate(regex(
+        path = "crate::models::user::USERNAME_REGEX",
+        message = "Username hanya boleh berisi huruf, angka, dan underscore"
+    ))]
+    pub username: String,
+
+    /// Email valid
+    #[validate(email(message = "Format email tidak valid"))]
+    pub email: String,
+
+    /// Password
+    #[validate(length(min = 8, message = "Password minimal 8 karakter"))]
+    pub password: String,
+
+    /// Nama depan (opsional)
+    #[validate(length(max = 50, message = "Nama depan maksimal 50 karakter"))]
+    pub first_name: Option<String>,
+
+    /// Nama belakang (opsional)
+    #[validate(length(max = 50, message = "Nama belakang maksimal 50 karakter"))]
+    pub last_name: Option<String>,
+
+    /// Role user (user, reseller) - admin tidak bisa create admin lain
+    pub role: Option<String>,
+
+    /// Package ID
+    pub package_id: Option<String>,
+
+    /// Company (opsional)
+    #[validate(length(max = 100, message = "Company maksimal 100 karakter"))]
+    pub company: Option<String>,
+
+    /// Phone (opsional)
+    #[validate(length(max = 20, message = "Phone maksimal 20 karakter"))]
+    pub phone: Option<String>,
+
+    /// Address (opsional)
+    pub address: Option<String>,
+
+    /// Status (default: active)
+    pub status: Option<String>,
+}
+
+/// DTO untuk assign package ke user
+#[derive(Debug, Deserialize)]
+pub struct AssignPackageRequest {
+    pub package_id: String,
 }
 
 /// DTO untuk change password

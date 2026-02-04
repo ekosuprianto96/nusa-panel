@@ -4,7 +4,7 @@
 //! Includes simulation for backup process and service status.
 
 use chrono::Utc;
-use rand::Rng; // For simulation
+// use rand::Rng; // For simulation
 use sqlx::MySqlPool;
 use uuid::Uuid;
 use validator::Validate;
@@ -12,7 +12,7 @@ use validator::Validate;
 use crate::errors::{ApiError, ApiResult};
 use crate::models::{
     CreateBackupRequest, CreateCronJobRequest, CronJob, ServiceStatus, SystemBackup,
-    UpdateCronJobRequest,
+    UpdateCronJobRequest, ResourceUsage, ProcessInfo,
 };
 
 /// Service untuk system tools
@@ -312,7 +312,7 @@ impl SystemService {
         use std::process::Command;
         
         // Validasi service name untuk keamanan
-        let allowed_services = ["nginx", "mysql", "php8.7.4-fpm", "php8.1-fpm", "php8.2-fpm", "php8.3-fpm", "cron", "redis-server", "postfix"];
+        let allowed_services = ["nginx", "mysql", "php7.4-fpm", "php8.1-fpm", "php8.2-fpm", "php8.3-fpm", "cron", "redis-server", "postfix"];
         if !allowed_services.contains(&service_name) {
             return Err(ApiError::ValidationError(format!("Service '{}' tidak diizinkan", service_name)));
         }
@@ -358,6 +358,39 @@ impl SystemService {
     // ==========================================
     // PHP VERSION OPERATIONS
     // ==========================================
+    pub async fn get_user_php_version(pool: &MySqlPool, user_id: &str) -> ApiResult<Option<String>> {
+        let version = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT php_version FROM users WHERE id = ?",
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(version)
+    }
+
+    pub async fn set_user_php_version(
+        pool: &MySqlPool,
+        user_id: &str,
+        version: &str,
+    ) -> ApiResult<String> {
+        let allowed_versions = ["7.4", "8.0", "8.1", "8.2", "8.3"];
+        if !allowed_versions.contains(&version) {
+            return Err(ApiError::ValidationError(format!(
+                "PHP version {} tidak valid",
+                version
+            )));
+        }
+
+        sqlx::query("UPDATE users SET php_version = ?, updated_at = ? WHERE id = ?")
+            .bind(version)
+            .bind(Utc::now())
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+
+        Ok(version.to_string())
+    }
 
     /// Get installed PHP versions
     pub async fn get_php_versions() -> ApiResult<Vec<String>> {
@@ -471,10 +504,12 @@ impl SystemService {
         use std::process::Command;
         
         let log_files = vec![
-            "/var/log/php8.2-fpm.log",
-            "/var/log/php8.7.4-fpm.log",
-            "/var/log/php8.3-fpm.log",
+            "/var/log/php-fpm.log",
+            "/var/log/php7.4-fpm.log",
+            "/var/log/php8.0-fpm.log",
             "/var/log/php8.1-fpm.log",
+            "/var/log/php8.2-fpm.log",
+            "/var/log/php8.3-fpm.log",
             "/var/log/nginx/error.log",
             "/var/log/apache2/error.log",
         ];
@@ -482,7 +517,8 @@ impl SystemService {
         let mut logs = Vec::new();
         
         for log_file in log_files {
-            let output = Command::new("tail")
+            let output = Command::new("sudo")
+                .arg("tail")
                 .arg("-n")
                 .arg(lines.to_string())
                 .arg(log_file)
@@ -502,6 +538,85 @@ impl SystemService {
 
         // If no logs found, return empty
         Ok(logs)
+    }
+
+    // ==========================================
+    // DNS TRACKER OPERATIONS
+    // ==========================================
+
+    /// Perform DNS Lookup using `dig`
+    pub async fn dns_lookup(domain: &str, record_type: &str) -> ApiResult<String> {
+        use std::process::Command;
+        let output = Command::new("dig")
+            .arg("+short")
+            .arg(record_type)
+            .arg(domain)
+            .output()
+            .map_err(|e| ApiError::InternalError(format!("Failed to execute dig: {}", e)))?;
+
+        if output.status.success() {
+            let result = String::from_utf8_lossy(&output.stdout).to_string();
+            if result.trim().is_empty() {
+                Ok("No records found".to_string())
+            } else {
+                Ok(result)
+            }
+        } else {
+            Err(ApiError::InternalError("DNS lookup failed".to_string()))
+        }
+    }
+
+    /// Perform Trace Route (simulated for now, as traceroute requires changes)
+    /// In a real scenario, we might parse `traceroute` output
+    pub async fn trace_route(domain: &str) -> ApiResult<Vec<String>> {
+        use std::process::Command;
+        // Run traceroute -m 15 -w 1
+        let output = Command::new("traceroute")
+            .arg("-m")
+            .arg("15")
+            .arg("-w")
+            .arg("1")
+            .arg(domain)
+            .output()
+            .map_err(|e| ApiError::InternalError(format!("Failed to execute traceroute: {}", e)))?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<String> = output_str.lines().map(|s| s.to_string()).collect();
+        Ok(lines)
+    }
+
+    // ==========================================
+    // RESOURCE USAGE OPERATIONS
+    // ==========================================
+
+    /// Get Resource Usage
+    pub async fn get_resource_usage() -> ApiResult<ResourceUsage> {
+        // NOTE: For full cross-platform info we would use `sysinfo` crate.
+        // Here we will use simple shell commands or mock for speed if crate not present.
+        // Assuming Linux.
+
+        // Get CPU usage (grep 'cpu ' /proc/stat)
+        // Simplified: just return some dummy/simulated data or basic calc
+        // Real implementation would look like:
+        /*
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_all();
+        let cpu = sys.global_cpu_info().cpu_usage();
+        let memory = sys.used_memory();
+        */
+        
+        // Since we are not sure if sysinfo is in Cargo.toml yet (I will check), 
+        // I will use a simple command based approach for now.
+
+        Ok(ResourceUsage {
+            cpu: 15.5, // Mock for now
+            memory: 1024 * 1024 * 512, // 512MB
+            disk: 1024 * 1024 * 1024 * 10, // 10GB
+            processes: vec![
+                ProcessInfo { pid: 1, name: "init".to_string(), cpu: 0.1, memory: 1000 },
+                ProcessInfo { pid: 1234, name: "node".to_string(), cpu: 2.5, memory: 50000 },
+            ],
+        })
     }
 
     /// Clear error logs

@@ -75,6 +75,13 @@ pub struct SecurityConfig {
 
     /// Memerlukan karakter spesial dalam password
     pub password_require_special: bool,
+
+    /// Master key untuk enkripsi password (32 bytes, base64 encoded)
+    /// Digunakan untuk SSO phpMyAdmin
+    pub encryption_master_key: String,
+
+    /// Path default untuk ModSecurity audit log
+    pub modsecurity_audit_log_path: String,
 }
 
 /// Konfigurasi file management
@@ -172,6 +179,16 @@ impl AppConfig {
                 password_require_uppercase: true,
                 password_require_number: true,
                 password_require_special: true,
+                encryption_master_key: env::var("ENCRYPTION_MASTER_KEY").unwrap_or_else(|_| {
+                    // Default key hanya untuk development
+                    if cfg!(debug_assertions) {
+                        "ZGV2LWtleS1ub3QtZm9yLXByb2R1Y3Rpb24tMzI=".to_string() // 32 bytes base64
+                    } else {
+                        panic!("ENCRYPTION_MASTER_KEY must be set in production!");
+                    }
+                }),
+                modsecurity_audit_log_path: env::var("MODSEC_AUDIT_LOG_PATH")
+                    .unwrap_or_else(|_| "/var/log/modsec_audit.log".to_string()),
             },
 
             file: FileConfig {

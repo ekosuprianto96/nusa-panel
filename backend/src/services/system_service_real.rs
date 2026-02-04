@@ -14,8 +14,10 @@ use validator::Validate;
 use crate::errors::{ApiError, ApiResult};
 use crate::models::{
     CreateBackupRequest, CreateCronJobRequest, CronJob, ServiceStatus, SystemBackup,
-    UpdateCronJobRequest,
+    UpdateCronJobRequest, ResourceUsage, ProcessInfo,
 };
+use crate::services::PhpPoolService;
+use crate::services::WebServerServiceReal;
 
 pub struct SystemServiceReal;
 
@@ -390,11 +392,57 @@ impl SystemServiceReal {
     // ==========================================
     // PHP VERSION OPERATIONS
     // ==========================================
+    pub async fn get_user_php_version(pool: &MySqlPool, user_id: &str) -> ApiResult<Option<String>> {
+        let version = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT php_version FROM users WHERE id = ?",
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(version)
+    }
+
+    pub async fn set_user_php_version(
+        pool: &MySqlPool,
+        user_id: &str,
+        version: &str,
+    ) -> ApiResult<String> {
+        let allowed_versions = ["7.4", "8.0", "8.1", "8.2", "8.3"];
+        if !allowed_versions.contains(&version) {
+            return Err(ApiError::ValidationError(format!(
+                "PHP version {} tidak valid",
+                version
+            )));
+        }
+
+        // Update DB first
+        sqlx::query("UPDATE users SET php_version = ?, updated_at = ? WHERE id = ?")
+            .bind(version)
+            .bind(Utc::now())
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+
+        // Ensure PHP-FPM pool for this user/version
+        let system_username = sqlx::query_scalar::<_, String>(
+            "SELECT username FROM users WHERE id = ?",
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+        let system_username = format!("user_{}", system_username);
+
+        PhpPoolService::ensure_user_pool(version, &system_username)?;
+
+        // Update vhost configs to use new PHP socket
+        WebServerServiceReal::update_user_vhosts_php(pool, user_id, version).await?;
+
+        Ok(version.to_string())
+    }
 
     /// Get installed PHP versions
     pub async fn get_php_versions() -> ApiResult<Vec<String>> {
-        use std::process::Command;
-        
         let mut versions = Vec::new();
         let possible_versions = ["7.4", "8.0", "8.1", "8.2", "8.3"];
         
@@ -424,8 +472,6 @@ impl SystemServiceReal {
 
     /// Get current active PHP version
     pub async fn get_current_php_version() -> ApiResult<String> {
-        use std::process::Command;
-        
         // Check which php-fpm is running
         let output = Command::new("systemctl")
             .arg("list-units")
@@ -456,8 +502,6 @@ impl SystemServiceReal {
 
     /// Change PHP version (switches which php-fpm is active)
     pub async fn change_php_version(new_version: &str) -> ApiResult<String> {
-        use std::process::Command;
-        
         let allowed_versions = ["7.4", "8.0", "8.1", "8.2", "8.3"];
         if !allowed_versions.contains(&new_version) {
             return Err(ApiError::ValidationError(format!("PHP version {} tidak valid", new_version)));
@@ -500,13 +544,13 @@ impl SystemServiceReal {
 
     /// Get error logs from common log files
     pub async fn get_error_logs(lines: usize) -> ApiResult<Vec<String>> {
-        use std::process::Command;
-        
         let log_files = vec![
+            "/var/log/php-fpm.log",
             "/var/log/php7.4-fpm.log",
-            "/var/log/php8.3-fpm.log",
-            "/var/log/php8.2-fpm.log",
+            "/var/log/php8.0-fpm.log",
             "/var/log/php8.1-fpm.log",
+            "/var/log/php8.2-fpm.log",
+            "/var/log/php8.3-fpm.log",
             "/var/log/nginx/error.log",
             "/var/log/apache2/error.log",
         ];
@@ -514,7 +558,8 @@ impl SystemServiceReal {
         let mut logs = Vec::new();
         
         for log_file in log_files {
-            let output = Command::new("tail")
+            let output = Command::new("sudo")
+                .arg("tail")
                 .arg("-n")
                 .arg(lines.to_string())
                 .arg(log_file)
@@ -532,14 +577,11 @@ impl SystemServiceReal {
             }
         }
 
-        // If no logs found, return empty
         Ok(logs)
     }
 
     /// Clear error logs
     pub async fn clear_error_logs() -> ApiResult<()> {
-        use std::process::Command;
-        
         let log_files = vec![
             "/var/log/php7.4-fpm.log",
             "/var/log/php8.3-fpm.log",
@@ -558,5 +600,88 @@ impl SystemServiceReal {
 
         tracing::info!("Error logs cleared");
         Ok(())
+    }
+
+    // ==========================================
+    // DNS TRACKER OPERATIONS
+    // ==========================================
+
+    pub async fn dns_lookup(domain: &str, record_type: &str) -> ApiResult<String> {
+        let output = Command::new("dig")
+            .arg("+short")
+            .arg(record_type)
+            .arg(domain)
+            .output()
+            .map_err(|e| ApiError::InternalError(format!("Failed to execute dig: {}", e)))?;
+
+        if output.status.success() {
+            let result = String::from_utf8_lossy(&output.stdout).to_string();
+            if result.trim().is_empty() {
+                Ok("No records found".to_string())
+            } else {
+                Ok(result)
+            }
+        } else {
+            Err(ApiError::InternalError("DNS lookup failed".to_string()))
+        }
+    }
+
+    pub async fn trace_route(domain: &str) -> ApiResult<Vec<String>> {
+        let output = Command::new("traceroute")
+            .arg("-m")
+            .arg("15")
+            .arg("-w")
+            .arg("1")
+            .arg(domain)
+            .output()
+            .map_err(|e| ApiError::InternalError(format!("Failed to execute traceroute: {}", e)))?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<String> = output_str.lines().map(|s| s.to_string()).collect();
+        Ok(lines)
+    }
+
+    // ==========================================
+    // RESOURCE USAGE OPERATIONS
+    // ==========================================
+
+    pub async fn get_resource_usage() -> ApiResult<ResourceUsage> {
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_all();
+        
+        let cpu_usage = if sys.cpus().is_empty() {
+            0.0
+        } else {
+            sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32
+        };
+        
+        let memory_usage = sys.used_memory();
+        
+        let mut total_disk = 0;
+        let disks = sysinfo::Disks::new_with_refreshed_list();
+        for disk in &disks {
+            total_disk += disk.total_space() - disk.available_space();
+        }
+
+        let mut processes = Vec::new();
+        // Get top 10 processes by CPU usage
+        let mut process_list: Vec<_> = sys.processes().iter().collect();
+        process_list.sort_by(|a, b| b.1.cpu_usage().partial_cmp(&a.1.cpu_usage()).unwrap_or(std::cmp::Ordering::Equal));
+
+        for (pid, process) in process_list.iter().take(10) {
+            processes.push(ProcessInfo {
+                pid: pid.as_u32(),
+                name: process.name().to_string_lossy().to_string(),
+                cpu: process.cpu_usage(),
+                memory: process.memory(),
+            });
+        }
+
+        Ok(ResourceUsage {
+            cpu: cpu_usage,
+            memory: memory_usage,
+            disk: total_disk,
+            processes,
+        })
     }
 }
