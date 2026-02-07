@@ -3,7 +3,11 @@
  * PhpManagerPage - PHP Version & Extensions Manager
  */
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue'
+import { Card, CardContent, CardTitle } from '@/components/ui/card'
+import { Button, Input } from '@/components/ui'
 import { systemService } from '@/services'
 import { Search, Settings } from 'lucide-vue-next'
 
@@ -12,6 +16,7 @@ const currentVersion = ref('8.2')
 const selectedVersion = ref('8.2')
 const activeTab = ref<'extensions' | 'options' | 'fpm'>('extensions')
 const searchQuery = ref('')
+const router = useRouter()
 
 const versions = ref<{ value: string; label: string }[]>([])
 
@@ -92,107 +97,112 @@ onMounted(fetchData)
 <template>
 <MainLayout>
     <div class="fixed top-4 right-4 z-50 space-y-2">
-        <div v-for="toast in toasts" :key="toast.id" :class="['px-4 py-3 rounded-lg shadow-lg font-medium text-sm', toast.type === 'success' ? 'bg-emerald-500 text-white' : toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-primary text-white']">{{ toast.message }}</div>
+        <div v-for="toast in toasts" :key="toast.id" :class="['px-4 py-3 rounded-lg shadow-lg font-medium text-sm', toast.type === 'success' ? 'bg-emerald-500 text-white' : toast.type === 'error' ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground']">{{ toast.message }}</div>
     </div>
 
     <div class="space-y-8">
         <!-- Breadcrumbs -->
-        <div class="flex flex-wrap gap-2">
-            <router-link to="/dashboard/system" class="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-primary hover:underline">System Tools</router-link>
-            <span class="text-slate-500 dark:text-slate-600 text-sm font-medium">/</span>
-            <span class="text-[#0d131b] dark:text-slate-100 text-sm font-medium">PHP Manager</span>
-        </div>
+        <AppBreadcrumb
+            :items="[
+                { label: 'System Tools', icon: Settings, onClick: () => router.push('/dashboard/system') },
+                { label: 'PHP Manager', current: true }
+            ]"
+        />
 
         <!-- Page Heading -->
         <div class="flex flex-wrap justify-between gap-3">
             <div class="flex flex-col gap-2">
-                <h1 class="text-[#0d131b] dark:text-white text-4xl font-black leading-tight tracking-[-0.033em]">PHP Manager</h1>
-                <p class="text-slate-500 dark:text-slate-400 text-base font-normal">Configure global PHP settings, switch versions, and manage extensions.</p>
+                <h1 class="text-foreground text-4xl font-black leading-tight tracking-[-0.033em]">PHP Manager</h1>
+                <p class="text-muted-foreground text-base font-normal">Configure global PHP settings, switch versions, and manage extensions.</p>
             </div>
         </div>
 
         <!-- Version Selection Card -->
-        <div class="flex flex-col lg:flex-row items-stretch rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-            <div class="w-full lg:w-1/3 bg-primary/10 flex items-center justify-center p-8">
-                <div class="text-primary text-center">
-                    <Settings :size="64" class="mx-auto mb-2" />
-                    <p class="font-bold text-xl">PHP {{ currentVersion }}</p>
-                    <p class="text-xs uppercase tracking-wider opacity-70">Current Active</p>
+        <Card class="rounded-xl overflow-hidden">
+            <div class="flex flex-col lg:flex-row items-stretch">
+                <div class="w-full lg:w-1/3 bg-primary/10 flex items-center justify-center p-8">
+                    <div class="text-primary text-center">
+                        <Settings :size="64" class="mx-auto mb-2" />
+                        <p class="font-bold text-xl">PHP {{ currentVersion }}</p>
+                        <p class="text-xs uppercase tracking-wider opacity-70">Current Active</p>
+                    </div>
                 </div>
+                <CardContent class="flex w-full grow flex-col gap-6 p-6">
+                    <div>
+                        <CardTitle class="mb-2">Global Version Selection</CardTitle>
+                        <p class="text-muted-foreground text-sm">Changing the version will restart the PHP-FPM service for all domains using the default profile.</p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row items-end gap-4">
+                        <label class="flex flex-col flex-1 min-w-[200px]">
+                            <p class="text-foreground text-sm font-medium pb-2">Select PHP Version</p>
+                            <select v-model="selectedVersion" class="flex w-full rounded-lg text-foreground border border-border bg-muted h-11 px-4 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+                                <option v-for="v in versions" :key="v.value" :value="v.value">{{ v.label }}</option>
+                            </select>
+                        </label>
+                        <Button @click="applyVersion">
+                            Apply Version
+                        </Button>
+                    </div>
+                </CardContent>
             </div>
-            <div class="flex w-full grow flex-col gap-6 p-6">
-                <div>
-                    <p class="text-[#0d131b] dark:text-white text-lg font-bold leading-tight mb-2">Global Version Selection</p>
-                    <p class="text-slate-500 dark:text-slate-400 text-sm">Changing the version will restart the PHP-FPM service for all domains using the default profile.</p>
-                </div>
-                <div class="flex flex-col sm:flex-row items-end gap-4">
-                    <label class="flex flex-col flex-1 min-w-[200px]">
-                        <p class="text-[#0d131b] dark:text-slate-200 text-sm font-medium pb-2">Select PHP Version</p>
-                        <select v-model="selectedVersion" class="flex w-full rounded-lg text-[#0d131b] dark:text-slate-200 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 h-11 px-4 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                            <option v-for="v in versions" :key="v.value" :value="v.value">{{ v.label }}</option>
-                        </select>
-                    </label>
-                    <button @click="applyVersion" class="flex min-w-[140px] items-center justify-center rounded-lg h-11 px-5 bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors">
-                        Apply Version
-                    </button>
-                </div>
-            </div>
-        </div>
+        </Card>
 
         <!-- Tabs & Filters -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 dark:border-slate-800 gap-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-border gap-4">
             <div class="flex gap-8">
-                <button @click="activeTab = 'extensions'" :class="['pb-4 text-sm font-medium', activeTab === 'extensions' ? 'border-b-2 border-primary text-primary font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-[#0d131b] dark:hover:text-white']">PHP Extensions</button>
-                <button @click="activeTab = 'options'" :class="['pb-4 text-sm font-medium', activeTab === 'options' ? 'border-b-2 border-primary text-primary font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-[#0d131b] dark:hover:text-white']">PHP Options</button>
-                <button @click="activeTab = 'fpm'" :class="['pb-4 text-sm font-medium', activeTab === 'fpm' ? 'border-b-2 border-primary text-primary font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-[#0d131b] dark:hover:text-white']">FPM Settings</button>
+                <button @click="activeTab = 'extensions'" :class="['pb-4 text-sm font-medium', activeTab === 'extensions' ? 'border-b-2 border-primary text-primary font-bold' : 'text-muted-foreground hover:text-foreground']">PHP Extensions</button>
+                <button @click="activeTab = 'options'" :class="['pb-4 text-sm font-medium', activeTab === 'options' ? 'border-b-2 border-primary text-primary font-bold' : 'text-muted-foreground hover:text-foreground']">PHP Options</button>
+                <button @click="activeTab = 'fpm'" :class="['pb-4 text-sm font-medium', activeTab === 'fpm' ? 'border-b-2 border-primary text-primary font-bold' : 'text-muted-foreground hover:text-foreground']">FPM Settings</button>
             </div>
-            <div class="pb-3 md:pb-0 flex items-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                <Search :size="16" class="text-slate-400 mr-2" />
-                <input v-model="searchQuery" class="bg-transparent border-none text-sm p-0 focus:ring-0 text-slate-700 dark:text-slate-200 w-48 placeholder:text-slate-400" placeholder="Search modules..." type="text" />
+            <div class="pb-3 md:pb-0 flex items-center bg-muted px-3 py-1.5 rounded-lg border border-border">
+                <Search :size="16" class="text-muted-foreground mr-2" />
+                <input v-model="searchQuery" class="bg-transparent border-none text-sm p-0 focus:ring-0 text-foreground w-48 placeholder:text-muted-foreground" placeholder="Search modules..." type="text" />
             </div>
         </div>
 
         <!-- Extensions Grid -->
         <div v-if="activeTab === 'extensions'" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <div v-for="ext in filteredExtensions" :key="ext.id" class="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:shadow-md transition-shadow">
-                <div class="flex flex-col">
-                    <span class="text-sm font-bold text-[#0d131b] dark:text-slate-100">{{ ext.name }}</span>
-                    <span class="text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-tighter">{{ ext.desc }}</span>
-                </div>
-                <button @click="toggleExtension(ext)" :class="['relative inline-flex h-6 w-11 items-center rounded-full transition-colors', ext.enabled ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-700']">
-                    <span :class="['inline-block h-5 w-5 transform rounded-full bg-white border border-slate-300 shadow transition-transform', ext.enabled ? 'translate-x-5' : 'translate-x-0.5']"></span>
-                </button>
-            </div>
+            <Card v-for="ext in filteredExtensions" :key="ext.id" class="rounded-xl">
+                <CardContent class="p-4 flex items-center justify-between">
+                    <div class="flex flex-col">
+                        <span class="text-sm font-bold text-foreground">{{ ext.name }}</span>
+                        <span class="text-[10px] text-muted-foreground uppercase tracking-tighter">{{ ext.desc }}</span>
+                    </div>
+                    <button @click="toggleExtension(ext)" :class="['relative inline-flex h-6 w-11 items-center rounded-full transition-colors', ext.enabled ? 'bg-primary' : 'bg-muted']">
+                        <span :class="['inline-block h-5 w-5 transform rounded-full bg-background border border-border shadow transition-transform', ext.enabled ? 'translate-x-5' : 'translate-x-0.5']"></span>
+                    </button>
+                </CardContent>
+            </Card>
         </div>
 
         <!-- Common Directives -->
-        <div v-if="activeTab === 'options'" class="border-t border-slate-200 dark:border-slate-800 pt-8">
-            <h3 class="text-[#0d131b] dark:text-white text-xl font-bold mb-6">Common Directives</h3>
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                <div class="divide-y divide-slate-100 dark:divide-slate-800">
+        <div v-if="activeTab === 'options'" class="border-t border-border pt-8">
+            <h3 class="text-foreground text-xl font-bold mb-6">Common Directives</h3>
+            <Card class="rounded-xl overflow-hidden">
+                <div class="divide-y divide-border">
                     <div v-for="dir in directives" :key="dir.name" class="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
                         <div class="flex-1">
-                            <p class="text-sm font-bold text-[#0d131b] dark:text-slate-100">{{ dir.name }}</p>
-                            <p class="text-xs text-slate-500 dark:text-slate-500">{{ dir.desc }}</p>
+                            <p class="text-sm font-bold text-foreground">{{ dir.name }}</p>
+                            <p class="text-xs text-muted-foreground">{{ dir.desc }}</p>
                         </div>
                         <div v-if="dir.type === 'select'" class="w-full sm:w-32">
-                            <select v-model="dir.value" class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-sm w-full outline-none">
+                            <select v-model="dir.value" class="rounded-lg border border-border bg-muted px-3 py-1.5 text-sm w-full outline-none">
                                 <option v-for="opt in dir.options" :key="opt" :value="opt">{{ opt }}</option>
                             </select>
                         </div>
                         <div v-else class="flex items-center gap-2 w-full sm:w-32">
-                            <input v-model="dir.value" class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-sm outline-none" type="text" />
-                            <span class="text-xs font-bold text-slate-400">{{ dir.unit }}</span>
+                            <Input v-model="dir.value" class="text-sm" />
+                            <span class="text-xs font-bold text-muted-foreground">{{ dir.unit }}</span>
                         </div>
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
 
         <!-- FPM Settings Placeholder -->
-        <div v-if="activeTab === 'fpm'" class="border-t border-slate-200 dark:border-slate-800 pt-8 text-center py-20">
-            <Settings :size="48" class="mx-auto mb-4 text-slate-300" />
-            <p class="text-slate-500">FPM Settings coming soon...</p>
+        <div v-if="activeTab === 'fpm'" class="border-t border-border pt-8 text-center py-20">
+            <Settings :size="48" class="mx-auto mb-4 text-muted-foreground/50" />
+            <p class="text-muted-foreground">FPM Settings coming soon...</p>
         </div>
     </div>
 </MainLayout>

@@ -12,6 +12,8 @@
 import { ref, onMounted, computed } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { securityService, domainService } from '@/services'
+import { Search } from 'lucide-vue-next'
+import { Input } from '@/components/ui'
 
 // ==========================================
 // STATE
@@ -29,7 +31,7 @@ const searchQuery = ref('')
 const showAddKeyModal = ref(false)
 const showDeleteKeyModal = ref(false)
 const showBlockIpModal = ref(false)
-const showSetup2faModal = ref(false)
+
 const showSslModal = ref(false)
 
 // Form data
@@ -41,9 +43,6 @@ const blockType = ref<'block' | 'whitelist'>('block')
 
 // 2FA
 const twoFaEnabled = ref(false)
-const twoFaSecret = ref('')
-const twoFaQrCode = ref('')
-const twoFaCode = ref('')
 
 // Selected items
 const selectedKey = ref<any>(null)
@@ -205,46 +204,7 @@ const unblockIp = async (ip: any): Promise<void> => {
     }
 }
 
-const setup2fa = async (): Promise<void> => {
-    if (!twoFaCode.value || twoFaCode.value.length !== 6) {
-        toast.error('Please enter a 6-digit code')
-        return
-    }
-    try {
-        isLoading.value = true
-        await securityService.verify2fa({ code: twoFaCode.value })
-        twoFaEnabled.value = true
-        showSetup2faModal.value = false
-        twoFaCode.value = ''
-        toast.success('2FA enabled successfully')
-    } catch (err: any) {
-        toast.error(err.response?.data?.message || 'Failed to enable 2FA')
-    } finally {
-        isLoading.value = false
-    }
-}
 
-const start2faSetup = async (): Promise<void> => {
-    try {
-        isLoading.value = true
-        showSetup2faModal.value = true
-        const res = await securityService.setup2fa()
-        twoFaSecret.value = res.data.data?.secret || ''
-        twoFaQrCode.value = res.data.data?.qr_code || ''
-    } catch (err: any) {
-        toast.error(err.response?.data?.message || 'Failed to initialize 2FA')
-        showSetup2faModal.value = false
-    } finally {
-        isLoading.value = false
-    }
-}
-
-const onTwoFaCardClick = (event: Event) => {
-    if (!twoFaEnabled.value) {
-        event.preventDefault()
-        start2faSetup()
-    }
-}
 
 // Modal openers
 const openDeleteKey = (key: any): void => {
@@ -421,8 +381,7 @@ onMounted(() => {
 
                     <!-- 2FA -->
                     <router-link
-                        :to="twoFaEnabled ? '/dashboard/security/two-factor-auth' : '#'"
-                        @click="onTwoFaCardClick"
+                        to="/dashboard/security/two-factor-auth"
                         class="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all p-5 rounded-xl flex flex-col text-center items-center cursor-pointer"
                     >
                         <div class="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-4 group-hover:scale-110 transition-transform">
@@ -452,9 +411,11 @@ onMounted(() => {
                 <div class="flex items-center justify-between mb-6">
                     <h3 class="text-[22px] font-bold leading-tight tracking-tight">Recent Security Events</h3>
                     <div class="flex gap-2">
-                        <div class="relative">
-                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
-                            <input v-model="searchQuery" class="pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs focus:ring-primary focus:border-primary w-64 dark:text-white" placeholder="Filter events..." type="text"/>
+                        <div class="relative w-64">
+                            <div class="absolute left-0 flex bottom-0 top-0 items-center pl-3 pointer-events-none">
+                                <Search :size="16" class="h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <Input v-model="searchQuery" class="pl-10 w-full h-full" placeholder="Filter events..." />
                         </div>
                         <button class="p-2 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
                             <span class="material-symbols-outlined text-slate-500">filter_list</span>
@@ -632,37 +593,7 @@ onMounted(() => {
         </div>
 
         <!-- 2FA Setup Modal -->
-        <div v-if="showSetup2faModal" @click.self="showSetup2faModal = false" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div @click.stop class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md animate-in">
-                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-[#0d131b] dark:text-white">Setup Two-Factor Authentication</h3>
-                    <button @click="showSetup2faModal = false" class="text-slate-500 hover:text-slate-700 dark:hover:text-white">
-                        <span class="material-symbols-outlined">close</span>
-                    </button>
-                </div>
-                <div class="p-6 space-y-4">
-                    <div class="text-center">
-                        <div class="w-32 h-32 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl mx-auto flex items-center justify-center mb-4">
-                            <img v-if="twoFaQrCode" :src="twoFaQrCode" alt="2FA QR Code" class="w-full h-full object-contain p-2" />
-                            <span v-else class="material-symbols-outlined text-6xl text-slate-400">qr_code_2</span>
-                        </div>
-                        <p class="text-xs text-slate-500 mb-4">Scan with your authenticator app</p>
-                    </div>
-                    <div class="bg-slate-100 dark:bg-slate-900 p-3 rounded-lg">
-                        <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Manual entry key</p>
-                        <p class="text-sm font-mono text-[#0d131b] dark:text-white break-all">{{ twoFaSecret }}</p>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Verification Code</label>
-                        <input v-model="twoFaCode" type="text" maxlength="6" placeholder="000000" class="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg text-lg text-center font-mono tracking-widest focus:ring-2 focus:ring-primary dark:text-white"/>
-                    </div>
-                </div>
-                <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                    <button @click="showSetup2faModal = false" class="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700">Cancel</button>
-                    <button @click="setup2fa" :disabled="twoFaCode.length !== 6" class="px-5 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-all">Verify & Enable</button>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Delete Key Modal -->
         <div v-if="showDeleteKeyModal" @click.self="showDeleteKeyModal = false" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">

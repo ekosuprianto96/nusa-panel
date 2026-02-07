@@ -28,9 +28,7 @@ onMounted(async () => {
   checkScreenSize()
   window.addEventListener('resize', checkScreenSize)
   
-  if (!authStore.user && authStore.accessToken) {
-    await authStore.fetchMe()
-  }
+  await authStore.checkSession()
 })
 
 const checkScreenSize = () => {

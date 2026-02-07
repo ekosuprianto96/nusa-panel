@@ -25,6 +25,12 @@ export const systemService = {
   deleteCronJob: (id: string) =>
     api.delete<ApiResponse<void>>(`/system/cron/${id}`),
 
+  getCronLogs: (id: string) =>
+    api.get<ApiResponse<string>>(`/system/cron/${id}/logs`),
+
+  clearCronLogs: (id: string) =>
+    api.delete<ApiResponse<void>>(`/system/cron/${id}/logs`),
+
   // Backup Endpoints
   listBackups: () =>
     api.get<ApiResponse<SystemBackup[]>>('/system/backups'),
@@ -34,6 +40,9 @@ export const systemService = {
 
   deleteBackup: (id: string) =>
     api.delete<ApiResponse<void>>(`/system/backups/${id}`),
+
+  getBackupDownloadUrl: (id: string) =>
+    `${import.meta.env.VITE_API_URL || '/api'}/system/backups/${id}/download`,
 
   // Service Status (Admin Only)
   getServicesStatus: () =>

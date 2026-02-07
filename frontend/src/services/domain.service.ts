@@ -4,7 +4,9 @@ import type {
   PaginatedResponse, 
   DomainResponse, 
   SubdomainResponse, 
-  DnsRecordResponse 
+  DnsRecordResponse,
+  DdnsHostResponse,
+  DdnsHostCreateResponse
 } from '@/types'
 
 /**
@@ -78,6 +80,16 @@ export const domainService = {
 
   deleteAlias: (domainId: string, aliasId: string) => 
     api.delete<ApiResponse<void>>(`/domains/${domainId}/aliases/${aliasId}`)
+  ,
+  // DDNS Hosts
+  listDdnsHosts: (domainId: string) =>
+    api.get<ApiResponse<DdnsHostResponse[]>>(`/domains/${domainId}/ddns`),
+
+  createDdnsHost: (domainId: string, data: { hostname: string, description?: string }) =>
+    api.post<ApiResponse<DdnsHostCreateResponse>>(`/domains/${domainId}/ddns`, data),
+
+  deleteDdnsHost: (domainId: string, ddnsId: string) =>
+    api.delete<ApiResponse<void>>(`/domains/${domainId}/ddns/${ddnsId}`)
 }
 
 export default domainService

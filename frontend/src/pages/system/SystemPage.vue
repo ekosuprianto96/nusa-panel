@@ -2,21 +2,17 @@
 /**
  * SystemPage - System Tools Dashboard
  * 
- * Modern dashboard with tool cards linking to dedicated sub-pages:
- * - Cron Jobs
- * - Track DNS
- * - Process Manager
- * - PHP Manager
- * - NPM Manager
- * - Error Logs
- * - Resource Usage
+ * Modern dashboard with tool cards linking to dedicated sub-pages
  */
 import { ref, onMounted } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button, Input } from '@/components/ui'
+import { Badge } from '@/components/ui/badge'
 import { systemService } from '@/services'
 import { 
     Clock, Globe, Activity, Code, Package, AlertTriangle, Gauge,
-    Search, Grid3X3, Filter, CheckCircle, RefreshCw, TrendingUp
+    Search, Grid3X3, Filter, CheckCircle, RefreshCw, TrendingUp, Database
 } from 'lucide-vue-next'
 
 const isLoading = ref(true)
@@ -41,6 +37,13 @@ const tools = [
         description: 'Schedule automated scripts and recurring tasks for your applications.',
         icon: Clock,
         route: '/dashboard/system/cron-jobs'
+    },
+    { 
+        id: 'backup', 
+        name: 'Backup Manager', 
+        description: 'Create, restore, and download system backups.',
+        icon: Database,
+        route: '/dashboard/system/backups'
     },
     { 
         id: 'dns', 
@@ -141,69 +144,75 @@ onMounted(fetchData)
         <!-- Page Header -->
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div class="flex flex-col gap-2">
-                <h2 class="text-4xl font-black leading-tight tracking-tight text-[#0d131b] dark:text-white">System Tools</h2>
-                <p class="text-slate-500 dark:text-slate-400 text-base max-w-lg leading-relaxed">
+                <h2 class="text-4xl font-black leading-tight tracking-tight text-foreground">System Tools</h2>
+                <p class="text-muted-foreground text-base max-w-lg leading-relaxed">
                     Optimize and maintain your server environment with professional-grade management utilities.
                 </p>
             </div>
             <div class="w-full md:w-80">
-                <label class="relative block group">
-                    <div class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
-                        <Search :size="20" />
-                    </div>
-                    <input 
+                <div class="relative group">
+                    <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <Input 
                         v-model="searchQuery"
                         @input="handleSearch"
-                        class="block w-full h-12 pl-11 pr-4 rounded-xl border-none bg-white dark:bg-slate-800 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700 focus:ring-2 focus:ring-primary text-slate-900 dark:text-white placeholder:text-slate-400 text-sm font-medium transition-all" 
+                        class="h-12 pl-11 rounded-xl"
                         placeholder="Search system utilities..." 
                         type="text"
                     />
-                </label>
+                </div>
             </div>
         </div>
 
         <!-- Stats Cards -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <div class="flex items-center gap-2 mb-3">
-                    <Clock :size="16" class="text-primary" />
-                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cron Jobs</p>
-                </div>
-                <p class="text-2xl font-black text-[#0d131b] dark:text-white">{{ stats.cronJobs }}</p>
-            </div>
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <div class="flex items-center gap-2 mb-3">
-                    <RefreshCw :size="16" class="text-emerald-500" />
-                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Backups</p>
-                </div>
-                <p class="text-2xl font-black text-[#0d131b] dark:text-white">{{ stats.backups }}</p>
-            </div>
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <div class="flex items-center gap-2 mb-3">
-                    <Code :size="16" class="text-blue-500" />
-                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">PHP Version</p>
-                </div>
-                <p class="text-2xl font-black text-[#0d131b] dark:text-white">{{ stats.phpVersion }}</p>
-            </div>
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-                <div class="flex items-center gap-2 mb-3">
-                    <TrendingUp :size="16" class="text-purple-500" />
-                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Storage Used</p>
-                </div>
-                <p class="text-2xl font-black text-[#0d131b] dark:text-white">{{ stats.storageUsed }}</p>
-            </div>
+            <Card class="rounded-xl">
+                <CardContent class="p-5">
+                    <div class="flex items-center gap-2 mb-3">
+                        <Clock :size="16" class="text-primary" />
+                        <p class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cron Jobs</p>
+                    </div>
+                    <p class="text-2xl font-black text-foreground">{{ stats.cronJobs }}</p>
+                </CardContent>
+            </Card>
+            <Card class="rounded-xl">
+                <CardContent class="p-5">
+                    <div class="flex items-center gap-2 mb-3">
+                        <RefreshCw :size="16" class="text-emerald-500" />
+                        <p class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Backups</p>
+                    </div>
+                    <p class="text-2xl font-black text-foreground">{{ stats.backups }}</p>
+                </CardContent>
+            </Card>
+            <Card class="rounded-xl">
+                <CardContent class="p-5">
+                    <div class="flex items-center gap-2 mb-3">
+                        <Code :size="16" class="text-blue-500" />
+                        <p class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">PHP Version</p>
+                    </div>
+                    <p class="text-2xl font-black text-foreground">{{ stats.phpVersion }}</p>
+                </CardContent>
+            </Card>
+            <Card class="rounded-xl">
+                <CardContent class="p-5">
+                    <div class="flex items-center gap-2 mb-3">
+                        <TrendingUp :size="16" class="text-purple-500" />
+                        <p class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Storage Used</p>
+                    </div>
+                    <p class="text-2xl font-black text-foreground">{{ stats.storageUsed }}</p>
+                </CardContent>
+            </Card>
         </div>
 
         <!-- Tools Section Header -->
         <div class="flex items-center justify-between">
-            <h3 class="text-[#0d131b] dark:text-white text-xl font-bold tracking-tight">Management Utilities</h3>
+            <h3 class="text-foreground text-xl font-bold tracking-tight">Management Utilities</h3>
             <div class="flex gap-2">
-                <button class="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-primary transition-colors">
+                <Button variant="outline" size="icon" class="rounded-lg">
                     <Filter :size="16" />
-                </button>
-                <button class="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-primary transition-colors">
+                </Button>
+                <Button variant="outline" size="icon" class="rounded-lg">
                     <Grid3X3 :size="16" />
-                </button>
+                </Button>
             </div>
         </div>
 
@@ -218,41 +227,46 @@ onMounted(fetchData)
                 v-for="tool in filteredTools" 
                 :key="tool.id"
                 :to="tool.route"
-                class="group flex flex-col p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md hover:border-primary/30 dark:hover:border-primary/50 transition-all hover:-translate-y-0.5"
             >
-                <div class="mb-5 size-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                    <component :is="tool.icon" :size="24" />
-                </div>
-                <div class="flex flex-col gap-1.5">
-                    <h4 class="text-[#0d131b] dark:text-white text-lg font-bold leading-tight">{{ tool.name }}</h4>
-                    <p class="text-slate-500 dark:text-slate-400 text-sm font-normal leading-normal">{{ tool.description }}</p>
-                </div>
+                <Card hoverable class="h-full rounded-xl hover:-translate-y-0.5 transition-all">
+                    <CardContent class="p-6 flex flex-col gap-4">
+                        <div class="size-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+                            <component :is="tool.icon" :size="24" />
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <h4 class="text-foreground text-lg font-bold leading-tight">{{ tool.name }}</h4>
+                            <p class="text-muted-foreground text-sm font-normal leading-normal">{{ tool.description }}</p>
+                        </div>
+                    </CardContent>
+                </Card>
             </router-link>
         </div>
 
         <!-- Recent System Activity -->
         <div class="mt-12">
-            <h3 class="text-[#0d131b] dark:text-white text-xl font-bold tracking-tight pb-4">Recent System Activity</h3>
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 shadow-sm">
-                <div 
-                    v-for="(activity, index) in recentActivity" 
-                    :key="index"
-                    class="flex items-center gap-4 p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                >
-                    <div :class="[
-                        'size-8 rounded-full flex items-center justify-center',
-                        activity.type === 'success' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
-                    ]">
-                        <CheckCircle v-if="activity.type === 'success'" :size="16" />
-                        <RefreshCw v-else :size="16" />
+            <h3 class="text-foreground text-xl font-bold tracking-tight pb-4">Recent System Activity</h3>
+            <Card class="rounded-xl overflow-hidden">
+                <div class="divide-y divide-border">
+                    <div 
+                        v-for="(activity, index) in recentActivity" 
+                        :key="index"
+                        class="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
+                    >
+                        <div :class="[
+                            'size-8 rounded-full flex items-center justify-center',
+                            activity.type === 'success' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
+                        ]">
+                            <CheckCircle v-if="activity.type === 'success'" :size="16" />
+                            <RefreshCw v-else :size="16" />
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-foreground">{{ activity.title }}</p>
+                            <p class="text-xs text-muted-foreground">{{ activity.desc }}</p>
+                        </div>
+                        <Badge variant="secondary" size="sm">{{ activity.time }}</Badge>
                     </div>
-                    <div class="flex-1">
-                        <p class="text-sm font-medium text-[#0d131b] dark:text-white">{{ activity.title }}</p>
-                        <p class="text-xs text-slate-500">{{ activity.desc }}</p>
-                    </div>
-                    <span class="text-xs text-slate-400 font-medium">{{ activity.time }}</span>
                 </div>
-            </div>
+            </Card>
         </div>
     </div>
 </MainLayout>

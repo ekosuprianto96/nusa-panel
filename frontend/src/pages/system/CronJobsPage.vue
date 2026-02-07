@@ -1,21 +1,21 @@
 <script setup lang="ts">
 /**
  * CronJobsPage - Cron Job Management
- * 
- * Features:
- * - Add cron job form with presets
- * - Cron syntax grid (minute, hour, day, month, weekday)
- * - Current cron jobs table
- * - Quick cron guide
  */
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button, Input, BaseModal } from '@/components/ui'
+import { Badge } from '@/components/ui/badge'
 import { systemService } from '@/services'
-import { RefreshCw, Clock, Terminal, Edit, Trash2, Info } from 'lucide-vue-next'
+import { useToastStore } from '@/stores/toast'
+import { RefreshCw, Clock, Terminal, Edit, Trash2, Info, Settings, Plus, AlertTriangle, FileText, Eraser, RotateCcw } from 'lucide-vue-next'
 
 const isLoading = ref(true)
 const cronJobs = ref<any[]>([])
-
+const router = useRouter()
 
 // Form data
 const cronPreset = ref('')
@@ -35,13 +35,22 @@ const presets = [
     { value: '0 0 * * 0', label: 'Once a Week ( 0 0 * * 0 )' }
 ]
 
-const toasts = ref<{ id: number; message: string; type: 'success' | 'error' | 'info' }[]>([])
-let toastId = 0
-const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    const id = ++toastId
-    toasts.value.push({ id, message, type })
-    setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id) }, 4000)
-}
+const toast = useToastStore()
+const showDeleteModal = ref(false)
+const cronToDelete = ref<string | null>(null)
+
+// Logs
+const showLogModal = ref(false)
+const logsLoading = ref(false)
+const logsContent = ref('')
+const currentCronForLogs = ref<string | null>(null)
+
+// Edit
+const showEditModal = ref(false)
+const editingCronId = ref<string | null>(null)
+const editSchedule = ref('')
+const editCommand = ref('')
+const editDescription = ref('')
 
 const getScheduleDescription = (schedule: string): string => {
     const parts = schedule.split(' ')
@@ -62,7 +71,7 @@ const fetchData = async () => {
         const res = await systemService.listCronJobs()
         cronJobs.value = res.data.data || []
     } catch (e) {
-        showToast('Failed to load cron jobs', 'error')
+        toast.error('Failed to load cron jobs')
     } finally {
         isLoading.value = false
     }
@@ -82,31 +91,112 @@ const onPresetChange = () => {
 
 const createCronJob = async () => {
     if (!cronCommand.value.trim()) {
-        showToast('Command is required', 'error')
+        toast.error('Command is required')
         return
     }
     const schedule = `${cronMinute.value} ${cronHour.value} ${cronDay.value} ${cronMonth.value} ${cronWeekday.value}`
     try {
         isLoading.value = true
         await systemService.createCronJob({ schedule, command: cronCommand.value.trim() })
-        showToast('Cron job created successfully', 'success')
+        toast.success('Cron job created successfully')
         resetForm()
         await fetchData()
     } catch (e: any) {
-        showToast(e.response?.data?.message || 'Failed to create cron job', 'error')
+        toast.error(e.response?.data?.message || 'Failed to create cron job')
     } finally {
         isLoading.value = false
     }
 }
 
-const deleteCronJob = async (cronId: string) => {
-    if (!confirm('Are you sure you want to delete this cron job?')) return
+const deleteCronJob = (cronId: string) => {
+    cronToDelete.value = cronId
+    showDeleteModal.value = true
+}
+
+const confirmDelete = async () => {
+    if (!cronToDelete.value) return
+    
     try {
-        await systemService.deleteCronJob(cronId)
-        showToast('Cron job deleted successfully', 'success')
+        isLoading.value = true
+        await systemService.deleteCronJob(cronToDelete.value)
+        toast.success('Cron job deleted successfully')
+        showDeleteModal.value = false
         await fetchData()
     } catch (e: any) {
-        showToast(e.response?.data?.message || 'Failed to delete cron job', 'error')
+        toast.error(e.response?.data?.message || 'Failed to delete cron job')
+    } finally {
+        isLoading.value = false
+        cronToDelete.value = null
+    }
+}
+
+const viewLogs = async (cronId: string) => {
+    currentCronForLogs.value = cronId
+    logsContent.value = ''
+    showLogModal.value = true
+    await fetchLogs()
+}
+
+const fetchLogs = async () => {
+    if (!currentCronForLogs.value) return
+    logsLoading.value = true
+    try {
+        const res = await systemService.getCronLogs(currentCronForLogs.value)
+        logsContent.value = res.data.data
+    } catch (e: any) {
+        toast.error('Failed to fetch logs')
+        logsContent.value = 'Failed to load logs.'
+    } finally {
+        logsLoading.value = false
+    }
+}
+
+const clearLogs = async () => {
+    if (!currentCronForLogs.value) return
+    try {
+        logsLoading.value = true
+        await systemService.clearCronLogs(currentCronForLogs.value)
+        toast.success('Logs cleared')
+        logsContent.value = '' 
+        await fetchLogs()
+    } catch (e: any) {
+        toast.error('Failed to clear logs')
+    } finally {
+        logsLoading.value = false
+    }
+}
+
+
+
+const editCronJob = (cron: any) => {
+    editingCronId.value = cron.id
+    editSchedule.value = cron.schedule
+    editCommand.value = cron.command
+    editDescription.value = cron.description || ''
+    showEditModal.value = true
+}
+
+const updateCronJob = async () => {
+    if (!editingCronId.value) return
+    if (!editCommand.value.trim()) {
+        toast.error('Command is required')
+        return
+    }
+    
+    try {
+        isLoading.value = true
+        await systemService.updateCronJob(editingCronId.value, {
+            schedule: editSchedule.value,
+            command: editCommand.value.trim(),
+            description: editDescription.value
+        })
+        toast.success('Cron job updated')
+        showEditModal.value = false
+        await fetchData()
+    } catch (e: any) {
+        toast.error(e.response?.data?.message || 'Failed to update cron job')
+    } finally {
+        isLoading.value = false
     }
 }
 
@@ -121,7 +211,7 @@ const resetForm = () => {
 }
 
 const refreshTable = () => {
-    showToast('Refreshing...', 'info')
+    toast.info('Refreshing...')
     fetchData()
 }
 
@@ -130,41 +220,39 @@ onMounted(fetchData)
 
 <template>
 <MainLayout>
-    <!-- Toast Notifications -->
-    <div class="fixed top-4 right-4 z-50 space-y-2">
-        <div v-for="toast in toasts" :key="toast.id" :class="['px-4 py-3 rounded-lg shadow-lg font-medium text-sm', toast.type === 'success' ? 'bg-emerald-500 text-white' : toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-primary text-white']">{{ toast.message }}</div>
-    </div>
+
 
     <div class="space-y-8">
         <!-- Breadcrumbs -->
-        <div class="flex items-center gap-2">
-            <router-link to="/dashboard/system" class="text-slate-500 dark:text-slate-400 text-sm font-medium hover:text-primary transition-colors">System Tools</router-link>
-            <span class="text-slate-400 dark:text-slate-600">/</span>
-            <span class="text-[#0d131b] dark:text-white text-sm font-semibold">Cron Jobs</span>
-        </div>
+        <AppBreadcrumb
+            :items="[
+                { label: 'System Tools', icon: Settings, onClick: () => router.push('/dashboard/system') },
+                { label: 'Cron Jobs', current: true }
+            ]"
+        />
 
         <!-- Page Header -->
         <div class="flex justify-between items-end">
             <div class="flex flex-col gap-2">
-                <h1 class="text-[#0d131b] dark:text-white text-4xl font-black leading-tight tracking-tight">Cron Job Management</h1>
-                <p class="text-slate-500 dark:text-slate-400 text-base max-w-2xl">Schedule and manage recurring system tasks using standard cron syntax. Presets are available for common intervals.</p>
+                <h1 class="text-foreground text-4xl font-black leading-tight tracking-tight">Cron Job Management</h1>
+                <p class="text-muted-foreground text-base max-w-2xl">Schedule and manage recurring system tasks using standard cron syntax.</p>
             </div>
-            <button @click="refreshTable" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                <RefreshCw :size="18" /> Refresh Table
-            </button>
+            <Button variant="outline" @click="refreshTable">
+                <RefreshCw :size="18" class="mr-2" /> Refresh Table
+            </Button>
         </div>
 
         <!-- Add New Cron Job Form -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
-                <h2 class="text-[#0d131b] dark:text-white text-lg font-bold">Add New Cron Job</h2>
-            </div>
-            <div class="p-6 space-y-6">
+        <Card class="rounded-xl">
+            <CardHeader class="bg-muted/30">
+                <CardTitle>Add New Cron Job</CardTitle>
+            </CardHeader>
+            <CardContent class="p-6 space-y-6">
                 <!-- Preset Dropdown -->
                 <div class="max-w-md">
                     <label class="flex flex-col gap-2">
-                        <span class="text-slate-700 dark:text-slate-300 text-sm font-semibold">Common Settings</span>
-                        <select v-model="cronPreset" @change="onPresetChange" class="block w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary/20 h-11 text-sm">
+                        <span class="text-foreground text-sm font-semibold">Common Settings</span>
+                        <select v-model="cronPreset" @change="onPresetChange" class="block w-full rounded-lg border-border bg-background text-foreground focus:border-primary focus:ring-primary/20 h-11 text-sm">
                             <option v-for="p in presets" :key="p.value" :value="p.value">{{ p.label }}</option>
                         </select>
                     </label>
@@ -173,120 +261,189 @@ onMounted(fetchData)
                 <!-- Cron Syntax Grid -->
                 <div class="grid grid-cols-5 gap-4">
                     <div>
-                        <label class="block text-slate-700 dark:text-slate-300 text-sm font-semibold mb-2">Minute</label>
-                        <input v-model="cronMinute" class="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary/20 h-11 text-center font-mono" placeholder="0-59" type="text" />
-                        <span class="text-[10px] text-slate-400 uppercase mt-1 block">0-59</span>
+                        <label class="block text-foreground text-sm font-semibold mb-2">Minute</label>
+                        <Input v-model="cronMinute" class="h-11 text-center font-mono" placeholder="0-59" />
+                        <span class="text-[10px] text-muted-foreground uppercase mt-1 block">0-59</span>
                     </div>
                     <div>
-                        <label class="block text-slate-700 dark:text-slate-300 text-sm font-semibold mb-2">Hour</label>
-                        <input v-model="cronHour" class="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary/20 h-11 text-center font-mono" placeholder="0-23" type="text" />
-                        <span class="text-[10px] text-slate-400 uppercase mt-1 block">0-23</span>
+                        <label class="block text-foreground text-sm font-semibold mb-2">Hour</label>
+                        <Input v-model="cronHour" class="h-11 text-center font-mono" placeholder="0-23" />
+                        <span class="text-[10px] text-muted-foreground uppercase mt-1 block">0-23</span>
                     </div>
                     <div>
-                        <label class="block text-slate-700 dark:text-slate-300 text-sm font-semibold mb-2">Day</label>
-                        <input v-model="cronDay" class="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary/20 h-11 text-center font-mono" placeholder="1-31" type="text" />
-                        <span class="text-[10px] text-slate-400 uppercase mt-1 block">1-31</span>
+                        <label class="block text-foreground text-sm font-semibold mb-2">Day</label>
+                        <Input v-model="cronDay" class="h-11 text-center font-mono" placeholder="1-31" />
+                        <span class="text-[10px] text-muted-foreground uppercase mt-1 block">1-31</span>
                     </div>
                     <div>
-                        <label class="block text-slate-700 dark:text-slate-300 text-sm font-semibold mb-2">Month</label>
-                        <input v-model="cronMonth" class="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary/20 h-11 text-center font-mono" placeholder="1-12" type="text" />
-                        <span class="text-[10px] text-slate-400 uppercase mt-1 block">1-12</span>
+                        <label class="block text-foreground text-sm font-semibold mb-2">Month</label>
+                        <Input v-model="cronMonth" class="h-11 text-center font-mono" placeholder="1-12" />
+                        <span class="text-[10px] text-muted-foreground uppercase mt-1 block">1-12</span>
                     </div>
                     <div>
-                        <label class="block text-slate-700 dark:text-slate-300 text-sm font-semibold mb-2">Weekday</label>
-                        <input v-model="cronWeekday" class="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary/20 h-11 text-center font-mono" placeholder="0-6" type="text" />
-                        <span class="text-[10px] text-slate-400 uppercase mt-1 block">0-6 (Sun-Sat)</span>
+                        <label class="block text-foreground text-sm font-semibold mb-2">Weekday</label>
+                        <Input v-model="cronWeekday" class="h-11 text-center font-mono" placeholder="0-6" />
+                        <span class="text-[10px] text-muted-foreground uppercase mt-1 block">0-6 (Sun-Sat)</span>
                     </div>
                 </div>
 
                 <!-- Command Field -->
                 <div>
-                    <label class="block text-slate-700 dark:text-slate-300 text-sm font-semibold mb-2">Command to Run</label>
+                    <label class="block text-foreground text-sm font-semibold mb-2">Command to Run</label>
                     <div class="relative">
-                        <Terminal :size="18" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input v-model="cronCommand" class="w-full pl-10 rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary/20 h-11 font-mono text-sm" placeholder="/usr/bin/php /var/www/html/artisan schedule:run" type="text" />
+                        <Terminal :size="18" class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <Input v-model="cronCommand" class="pl-10 h-11 font-mono text-sm" placeholder="/usr/bin/php /var/www/html/artisan schedule:run" />
                     </div>
                 </div>
 
                 <div class="flex justify-end pt-2">
-                    <button @click="createCronJob" class="bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-lg transition-all shadow-md active:scale-[0.98]">
-                        Add Cron Job
-                    </button>
+                    <Button @click="createCronJob">
+                        <Plus :size="18" class="mr-2" /> Add Cron Job
+                    </Button>
                 </div>
-            </div>
-        </div>
+            </CardContent>
+        </Card>
 
         <!-- Current Cron Jobs Table -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/30">
-                <h2 class="text-[#0d131b] dark:text-white text-lg font-bold">Current Cron Jobs</h2>
-                <span class="bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">{{ cronJobs.length }} Tasks Active</span>
-            </div>
+        <Card class="rounded-xl">
+            <CardHeader class="bg-muted/30 flex-row items-center justify-between">
+                <CardTitle>Current Cron Jobs</CardTitle>
+                <Badge variant="default">{{ cronJobs.length }} Tasks Active</Badge>
+            </CardHeader>
 
             <div v-if="isLoading" class="p-12 text-center">
                 <div class="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p class="text-slate-500">Loading cron jobs...</p>
+                <p class="text-muted-foreground">Loading cron jobs...</p>
             </div>
 
             <div v-else-if="cronJobs.length === 0" class="p-12 text-center">
-                <Clock :size="48" class="mx-auto mb-4 text-slate-300" />
-                <p class="text-slate-500">No cron jobs configured</p>
+                <Clock :size="48" class="mx-auto mb-4 text-muted-foreground/50" />
+                <p class="text-muted-foreground">No cron jobs configured</p>
             </div>
 
             <div v-else class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
-                        <tr class="bg-slate-50 dark:bg-slate-800/50">
-                            <th class="px-6 py-3 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">Schedule</th>
-                            <th class="px-6 py-3 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">Command</th>
-                            <th class="px-6 py-3 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 text-center">Status</th>
-                            <th class="px-6 py-3 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 text-right">Actions</th>
+                        <tr class="bg-muted/30">
+                            <th class="px-6 py-3 text-muted-foreground text-xs font-bold uppercase tracking-wider border-b border-border">Schedule</th>
+                            <th class="px-6 py-3 text-muted-foreground text-xs font-bold uppercase tracking-wider border-b border-border">Command</th>
+                            <th class="px-6 py-3 text-muted-foreground text-xs font-bold uppercase tracking-wider border-b border-border text-center">Status</th>
+                            <th class="px-6 py-3 text-muted-foreground text-xs font-bold uppercase tracking-wider border-b border-border text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                        <tr v-for="cron in cronJobs" :key="cron.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                    <tbody class="divide-y divide-border">
+                        <tr v-for="cron in cronJobs" :key="cron.id" class="hover:bg-muted/30 transition-colors">
                             <td class="px-6 py-4">
                                 <div class="flex flex-col">
                                     <span class="font-mono text-primary text-sm font-semibold">{{ cron.schedule }}</span>
-                                    <span class="text-[11px] text-slate-400">{{ getScheduleDescription(cron.schedule) }}</span>
+                                    <span class="text-[11px] text-muted-foreground">{{ getScheduleDescription(cron.schedule) }}</span>
                                 </div>
                             </td>
                             <td class="px-6 py-4">
-                                <code class="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs text-slate-700 dark:text-slate-300 break-all">{{ cron.command }}</code>
+                                <code class="bg-muted px-2 py-1 rounded text-xs text-foreground break-all">{{ cron.command }}</code>
                             </td>
                             <td class="px-6 py-4 text-center">
-                                <span :class="['text-[10px] font-bold uppercase px-2 py-1 rounded', cron.is_active !== false ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-100 text-slate-500']">
+                                <Badge :variant="cron.is_active !== false ? 'success' : 'secondary'">
                                     {{ cron.is_active !== false ? 'Active' : 'Paused' }}
-                                </span>
+                                </Badge>
                             </td>
                             <td class="px-6 py-4 text-right">
                                 <div class="flex justify-end gap-2">
-                                    <button class="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all" title="Edit">
+                                    <Button variant="ghost" size="icon" @click="viewLogs(cron.id)" title="View Logs">
+                                        <FileText :size="18" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" @click="editCronJob(cron)" title="Edit">
                                         <Edit :size="18" />
-                                    </button>
-                                    <button @click="deleteCronJob(cron.id)" class="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all" title="Delete">
+                                    </Button>
+                                    <Button variant="ghost" size="icon" @click="deleteCronJob(cron.id)" class="text-destructive hover:text-destructive" title="Delete">
                                         <Trash2 :size="18" />
-                                    </button>
+                                    </Button>
                                 </div>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-        </div>
+        </Card>
 
         <!-- Quick Cron Guide -->
-        <div class="p-6 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-xl flex gap-4 items-start">
-            <Info :size="20" class="text-primary mt-0.5" />
-            <div class="text-sm">
-                <p class="text-[#0d131b] dark:text-white font-bold mb-1">Quick Cron Guide</p>
-                <p class="text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Cron uses a five-field format: <code class="bg-primary/10 text-primary px-1 font-bold">Min Hour Day Month Weekday</code>. 
-                    Use <code class="font-bold">*</code> for "every", <code class="font-bold">*/n</code> for "every n intervals", and <code class="font-bold">x,y</code> for specific values. 
-                    The command field should contain the full path to your scripts or binaries.
+        <Card class="rounded-xl bg-primary/5 border-primary/20">
+            <CardContent class="p-6 flex gap-4 items-start">
+                <Info :size="20" class="text-primary mt-0.5" />
+                <div class="text-sm">
+                    <p class="text-foreground font-bold mb-1">Quick Cron Guide</p>
+                    <p class="text-muted-foreground leading-relaxed">
+                        Cron uses a five-field format: <code class="bg-primary/10 text-primary px-1 font-bold">Min Hour Day Month Weekday</code>. 
+                        Use <code class="font-bold">*</code> for "every", <code class="font-bold">*/n</code> for "every n intervals", and <code class="font-bold">x,y</code> for specific values.
+                    </p>
+                </div>
+            </CardContent>
+        </Card>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <BaseModal :isOpen="showDeleteModal" @close="showDeleteModal = false" title="Confirm Deletion" width="sm">
+        <div class="flex items-start gap-4 py-2">
+            <div class="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                <AlertTriangle class="w-5 h-5 text-destructive" />
+            </div>
+            <div>
+                <p class="text-sm font-medium text-foreground">Delete Cron Job</p>
+                <p class="text-sm text-muted-foreground mt-1">
+                    Are you sure you want to delete this cron job? This action cannot be undone.
                 </p>
             </div>
         </div>
-    </div>
+        <template #footer>
+            <Button variant="ghost" @click="showDeleteModal = false">Cancel</Button>
+            <Button variant="destructive" @click="confirmDelete" :disabled="isLoading">
+                {{ isLoading ? 'Deleting...' : 'Delete' }}
+            </Button>
+        </template>
+    </BaseModal>
+
+    <!-- Log Viewer Modal -->
+    <BaseModal :isOpen="showLogModal" @close="showLogModal = false" title="Cron Job Logs" width="lg">
+        <div class="space-y-4">
+            <div class="bg-muted rounded-lg p-4 font-mono text-xs overflow-x-auto whitespace-pre-wrap max-h-[60vh] min-h-[200px] border border-border">
+                <div v-if="logsLoading && !logsContent" class="flex items-center justify-center py-8">
+                    <div class="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full"></div>
+                </div>
+                <div v-else>{{ logsContent || 'No logs available.' }}</div>
+            </div>
+        </div>
+        <template #footer>
+            <Button variant="outline" @click="fetchLogs" :disabled="logsLoading">
+                <RotateCcw :size="16" class="mr-2" /> Refresh
+            </Button>
+            <Button variant="destructive" @click="clearLogs" :disabled="logsLoading || !logsContent">
+                <Eraser :size="16" class="mr-2" /> Clear Logs
+            </Button>
+            <Button variant="ghost" @click="showLogModal = false">Close</Button>
+        </template>
+    </BaseModal>
+
+    <!-- Edit Modal -->
+    <BaseModal :isOpen="showEditModal" @close="showEditModal = false" title="Edit Cron Job" width="md">
+        <div class="space-y-4">
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Schedule</label>
+                <Input v-model="editSchedule" placeholder="* * * * *" />
+                <p class="text-xs text-muted-foreground">Format: min hour day month weekday</p>
+            </div>
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Command</label>
+                <Input v-model="editCommand" placeholder="php /path/to/script.php" />
+            </div>
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Description</label>
+                <Input v-model="editDescription" placeholder="Description (optional)" />
+            </div>
+        </div>
+        <template #footer>
+            <Button variant="ghost" @click="showEditModal = false">Cancel</Button>
+            <Button @click="updateCronJob" :disabled="isLoading">Save Changes</Button>
+        </template>
+    </BaseModal>
 </MainLayout>
 </template>

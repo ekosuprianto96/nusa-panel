@@ -7,44 +7,56 @@
     /* ========================================
        LIGHT THEME - Modern Clean Design  
        ======================================== */
-    
+
     /* Core Colors */
     --background: 210 20% 98%;
     --foreground: 222 47% 11%;
-    
+
     /* Card & Popover */
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
-    
+
     /* Primary Blue/Indigo */
     --primary: 217 91% 60%;
     --primary-foreground: 210 40% 98%;
-    
+
     /* Secondary */
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
-    
+
     /* Muted */
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
-    
+
     /* Accent */
     --accent: 210 40% 96%;
     --accent-foreground: 222 47% 11%;
-    
+
     /* Destructive */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    
+
+    /* Success */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+
+    /* Info */
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
     /* Border & Input */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 217 91% 60%;
-    
+
     --radius: 0.75rem;
-    
+
     /* ========================================
        SIDEBAR THEME - Light
        ======================================== */
@@ -53,7 +65,7 @@
     --sidebar-icon: 215 16% 47%;
     --sidebar-icon-active: 217 91% 60%;
     --sidebar-active-bg: 217 91% 97%;
-    
+
     /* ========================================
        TABLE/FILE LIST THEME - Light
        ======================================== */
@@ -61,13 +73,13 @@
     --table-row-hover: 217 91% 97%;
     --table-row-selected: 217 91% 95%;
     --table-border: 214 32% 95%;
-    
+
     /* ========================================
        PANEL THEME - Light  
        ======================================== */
     --panel-bg: 0 0% 100%;
     --panel-border: 214 32% 91%;
-    
+
     /* ========================================
        FILE ICONS
        ======================================== */
@@ -81,42 +93,54 @@
     /* ========================================
        DARK THEME - Modern Slate Design
        ======================================== */
-    
+
     /* Core Colors */
     --background: 222 47% 6%;
     --foreground: 210 40% 98%;
-    
+
     /* Card & Popover */
     --card: 222 47% 8%;
     --card-foreground: 210 40% 98%;
     --popover: 222 47% 8%;
     --popover-foreground: 210 40% 98%;
-    
+
     /* Primary Blue */
     --primary: 217 91% 60%;
     --primary-foreground: 222 47% 11%;
-    
+
     /* Secondary */
     --secondary: 217 33% 15%;
     --secondary-foreground: 210 40% 98%;
-    
+
     /* Muted */
     --muted: 217 33% 15%;
     --muted-foreground: 215 20% 65%;
-    
+
     /* Accent */
     --accent: 217 33% 15%;
     --accent-foreground: 210 40% 98%;
-    
+
     /* Destructive */
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    
+
+    /* Success */
+    --success: 142 69% 40%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning */
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 0%;
+
+    /* Info */
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
     /* Border & Input */
     --border: 217 33% 17%;
     --input: 217 33% 17%;
     --ring: 224 76% 48%;
-    
+
     /* ========================================
        SIDEBAR THEME - Dark
        ======================================== */
@@ -125,7 +149,7 @@
     --sidebar-icon: 215 20% 55%;
     --sidebar-icon-active: 217 91% 60%;
     --sidebar-active-bg: 217 33% 15%;
-    
+
     /* ========================================
        TABLE/FILE LIST THEME - Dark
        ======================================== */
@@ -133,13 +157,13 @@
     --table-row-hover: 217 33% 13%;
     --table-row-selected: 217 40% 18%;
     --table-border: 217 33% 14%;
-    
+
     /* ========================================
        PANEL THEME - Dark
        ======================================== */
     --panel-bg: 222 47% 8%;
     --panel-border: 217 33% 17%;
-    
+
     /* ========================================
        FILE ICONS - Dark
        ======================================== */
@@ -154,6 +178,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -225,6 +250,7 @@
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -239,6 +265,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }

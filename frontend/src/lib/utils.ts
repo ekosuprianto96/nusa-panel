@@ -1,6 +1,12 @@
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+/**
+ * Utils - Re-export from Design System
+ * 
+ * Backward compatibility layer
+ * Semua utilities sekarang ada di @/design-system
+ */
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+// Re-export cn function untuk backward compatibility
+export { cn } from '@/design-system/utils/cn'
+
+// Re-export types
+export type { ClassValue } from 'clsx'

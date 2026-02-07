@@ -168,10 +168,7 @@ export const fileService = {
                 xhr.open('PUT', '/api/files/content');
                 xhr.setRequestHeader('Content-Type', 'application/json');
 
-                const token = localStorage.getItem('access_token');
-                if (token) {
-                    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                }
+                xhr.withCredentials = true;
 
                 xhr.send(
                     JSON.stringify({

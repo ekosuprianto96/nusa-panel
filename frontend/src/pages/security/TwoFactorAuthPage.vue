@@ -1,9 +1,17 @@
 <script setup lang="ts">
+/**
+ * TwoFactorAuthPage - 2FA Security Setup
+ */
 import { ref, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui'
 import { securityService } from '@/services'
-import { ChevronLeft, Info, Copy, Download, Printer, QrCode, CheckCircle, Lock } from 'lucide-vue-next'
+import { Info, Copy, Download, Printer, QrCode, CheckCircle, Lock, Shield } from 'lucide-vue-next'
 
+const router = useRouter()
 const isLoading = ref(true)
 const twoFaEnabled = ref(false)
 const qrCodeUrl = ref('')
@@ -14,7 +22,6 @@ const backupCodes = ref<string[]>([])
 const codeInputs = ref<HTMLInputElement[]>([])
 
 import { useToastStore } from '@/stores/toast'
-
 const toast = useToastStore()
 
 const fetchData = async () => {
@@ -91,58 +98,104 @@ onMounted(fetchData)
 
 <template>
 <MainLayout>
-
-
     <div class="space-y-8">
-        <div class="flex items-center gap-4">
-            <router-link to="/dashboard/security" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft :size="24" /></router-link>
-            <div><h2 class="text-3xl font-black text-[#0d131b] dark:text-white">2FA Security Setup</h2><p class="text-slate-500 text-sm">Add an extra layer of security to your account.</p></div>
+        <!-- Header -->
+        <div>
+            <AppBreadcrumb
+                class="mb-4"
+                :items="[
+                    { label: 'Security Center', icon: Shield, onClick: () => router.push('/dashboard/security') },
+                    { label: '2FA Setup', current: true }
+                ]"
+            />
+            <h2 class="text-3xl font-black text-foreground">2FA Security Setup</h2>
+            <p class="text-muted-foreground text-sm mt-1">Add an extra layer of security to your account.</p>
         </div>
 
-        <div v-if="isLoading" class="flex justify-center py-20"><div class="animate-spin w-10 h-10 border-3 border-primary border-t-transparent rounded-full"></div></div>
-
-        <div v-else-if="twoFaEnabled" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center">
-            <div class="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle :size="48" class="text-success" /></div>
-            <h3 class="text-2xl font-bold mb-2">Two-Factor Authentication is Active</h3>
-            <p class="text-slate-500 mb-6">Your account is protected with an extra layer of security.</p>
-            <button @click="disable2fa" class="px-6 py-3 bg-error/10 text-error hover:bg-error/20 rounded-lg text-sm font-bold">Disable 2FA</button>
+        <!-- Loading -->
+        <div v-if="isLoading" class="flex justify-center py-20">
+            <div class="animate-spin w-10 h-10 border-3 border-primary border-t-transparent rounded-full"></div>
         </div>
 
+        <!-- 2FA Enabled State -->
+        <Card v-else-if="twoFaEnabled" class="rounded-2xl p-12 text-center">
+            <CardContent>
+                <div class="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <CheckCircle :size="48" class="text-emerald-500" />
+                </div>
+                <h3 class="text-2xl font-bold mb-2 text-foreground">Two-Factor Authentication is Active</h3>
+                <p class="text-muted-foreground mb-6">Your account is protected with an extra layer of security.</p>
+                <Button variant="destructive" @click="disable2fa">Disable 2FA</Button>
+            </CardContent>
+        </Card>
+
+        <!-- 2FA Setup Flow -->
         <template v-else>
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                <div class="p-8 flex flex-col lg:flex-row gap-12">
+            <Card class="rounded-2xl overflow-hidden">
+                <CardContent class="p-8 flex flex-col lg:flex-row gap-12">
+                    <!-- Step 1: Scan QR Code -->
                     <div class="flex-1 space-y-6">
-                        <div class="flex items-center gap-4"><span class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white font-bold text-sm">1</span><h3 class="text-lg font-bold">Scan the QR Code</h3></div>
-                        <p class="text-sm text-slate-500">Open your authenticator app and scan the QR code below.</p>
-                        <div class="bg-white p-4 inline-block border-2 border-slate-100 rounded-xl">
-                            <div class="w-48 h-48 bg-slate-50 flex items-center justify-center border border-slate-200 rounded-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">1</span>
+                            <h3 class="text-lg font-bold text-foreground">Scan the QR Code</h3>
+                        </div>
+                        <p class="text-sm text-muted-foreground">Open your authenticator app and scan the QR code below.</p>
+                        <div class="bg-white p-4 inline-block border-2 border-border rounded-xl">
+                            <div class="w-48 h-48 bg-muted flex items-center justify-center border border-border rounded-lg">
                                 <img v-if="qrCodeUrl" :src="qrCodeUrl" alt="2FA QR Code" class="w-full h-full object-contain" />
-                                <QrCode v-else :size="96" class="text-slate-300" />
+                                <QrCode v-else :size="96" class="text-muted-foreground/50" />
                             </div>
                         </div>
-                        <div class="space-y-2"><p class="text-xs font-semibold text-slate-500 uppercase">Can't scan?</p><div class="flex items-center gap-2"><code class="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded text-xs font-mono text-primary select-all">{{ secretKey }}</code><button @click="copySecretKey" class="p-1.5 text-slate-400 hover:text-primary"><Copy :size="16" /></button></div></div>
-                    </div>
-                    <div class="flex-1 space-y-6">
-                        <div class="flex items-center gap-4"><span class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white font-bold text-sm">2</span><h3 class="text-lg font-bold">Verify Your Device</h3></div>
-                        <p class="text-sm text-slate-500">Enter the 6-digit code from your authenticator app.</p>
-                        <div class="grid grid-cols-6 gap-2" @paste="handlePaste">
-                            <input v-for="(_, i) in 6" :key="i" :ref="el => { if (el) codeInputs[i] = el as HTMLInputElement }" v-model="verificationCode[i]" type="text" inputmode="numeric" maxlength="1" @input="handleCodeInput(i, $event)" @keydown="handleCodeKeydown(i, $event)" class="w-full h-12 text-center text-xl font-bold rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-primary focus:border-primary" placeholder="·" />
+                        <div class="space-y-2">
+                            <p class="text-xs font-semibold text-muted-foreground uppercase">Can't scan?</p>
+                            <div class="flex items-center gap-2">
+                                <code class="bg-muted px-3 py-1.5 rounded text-xs font-mono text-primary select-all">{{ secretKey }}</code>
+                                <button @click="copySecretKey" class="p-1.5 text-muted-foreground hover:text-primary"><Copy :size="16" /></button>
+                            </div>
                         </div>
-                        <button @click="enable2fa" :disabled="isVerifying || verificationCode.join('').length !== 6" class="w-full py-3.5 bg-primary text-white hover:bg-primary/90 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50"><Lock :size="18" />{{ isVerifying ? 'Verifying...' : 'Enable 2FA' }}</button>
-                        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-warning"><Info :size="16" /><p class="text-[11px] font-medium">Complete both steps to secure your account.</p></div>
                     </div>
-                </div>
-            </div>
 
-            <section class="space-y-4">
-                <div class="flex items-center justify-between"><h3 class="text-lg font-bold">Backup Recovery Codes</h3><div class="flex gap-2"><button @click="downloadBackupCodes" class="flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold"><Download :size="14" />Download</button><button @click="printBackupCodes" class="flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold"><Printer :size="14" />Print</button></div></div>
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
-                    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 p-4 rounded-xl mb-6"><p class="text-xs text-blue-700 dark:text-blue-300"><strong>Note:</strong> Store these codes safely. Each code can only be used once.</p></div>
-                    <div v-if="backupCodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div v-for="code in backupCodes" :key="code" class="font-mono bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 px-3 py-2 rounded text-center text-sm">{{ code }}</div>
+                    <!-- Step 2: Verify -->
+                    <div class="flex-1 space-y-6">
+                        <div class="flex items-center gap-4">
+                            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">2</span>
+                            <h3 class="text-lg font-bold text-foreground">Verify Your Device</h3>
+                        </div>
+                        <p class="text-sm text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
+                        <div class="grid grid-cols-6 gap-2" @paste="handlePaste">
+                            <input v-for="(_, i) in 6" :key="i" :ref="el => { if (el) codeInputs[i] = el as HTMLInputElement }" v-model="verificationCode[i]" 
+                                type="text" inputmode="numeric" maxlength="1" @input="handleCodeInput(i, $event)" @keydown="handleCodeKeydown(i, $event)" 
+                                class="w-full h-12 text-center text-xl font-bold rounded-lg border-border bg-muted focus:ring-primary focus:border-primary" placeholder="·" />
+                        </div>
+                        <Button class="w-full" @click="enable2fa" :disabled="isVerifying || verificationCode.join('').length !== 6">
+                            <Lock :size="18" class="mr-2" />{{ isVerifying ? 'Verifying...' : 'Enable 2FA' }}
+                        </Button>
+                        <div class="pt-4 border-t border-border flex items-center gap-2 text-amber-500">
+                            <Info :size="16" />
+                            <p class="text-[11px] font-medium">Complete both steps to secure your account.</p>
+                        </div>
                     </div>
-                    <p v-else class="text-xs text-slate-500">Backup codes will appear after setup.</p>
+                </CardContent>
+            </Card>
+
+            <!-- Backup Codes -->
+            <section class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-bold text-foreground">Backup Recovery Codes</h3>
+                    <div class="flex gap-2">
+                        <Button variant="outline" size="sm" @click="downloadBackupCodes"><Download :size="14" class="mr-2" />Download</Button>
+                        <Button variant="outline" size="sm" @click="printBackupCodes"><Printer :size="14" class="mr-2" />Print</Button>
+                    </div>
                 </div>
+                <Card class="rounded-2xl p-6">
+                    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 p-4 rounded-xl mb-6">
+                        <p class="text-xs text-blue-700 dark:text-blue-300"><strong>Note:</strong> Store these codes safely. Each code can only be used once.</p>
+                    </div>
+                    <div v-if="backupCodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div v-for="code in backupCodes" :key="code" class="font-mono bg-muted border border-border px-3 py-2 rounded text-center text-sm text-foreground">{{ code }}</div>
+                    </div>
+                    <p v-else class="text-xs text-muted-foreground">Backup codes will appear after setup.</p>
+                </Card>
             </section>
         </template>
     </div>

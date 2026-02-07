@@ -14,6 +14,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import FileManagerLayout from '@/layouts/FileManagerLayout.vue';
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue';
 import ContextMenu from '@/components/files/ContextMenu.vue';
 import DirectoryPickerModal from '@/components/files/DirectoryPickerModal.vue';
 import { fileService } from '@/services';
@@ -27,7 +28,6 @@ import {
     Trash2,
     Lock,
     Search,
-    ChevronRight,
     File,
     Folder,
     Image,
@@ -45,7 +45,7 @@ import {
     CheckSquare,
     Square,
     Move,
-    Copy,
+    Copy
 } from 'lucide-vue-next';
 
 // ==========================================
@@ -139,6 +139,20 @@ const breadcrumbs = computed(() => {
         path += '/' + part;
         return { name: part, path };
     });
+});
+
+const breadcrumbItems = computed(() => {
+    const items: { label: string; icon?: any; onClick: () => void; current?: boolean }[] = [
+        { label: 'Home', icon: Home, onClick: () => navigateTo(''), current: breadcrumbs.value.length === 0 },
+    ];
+    breadcrumbs.value.forEach((crumb, idx) => {
+        items.push({
+            label: crumb.name,
+            onClick: () => navigateTo(crumb.path),
+            current: idx === breadcrumbs.value.length - 1,
+        });
+    });
+    return items;
 });
 
 /**
@@ -1158,28 +1172,7 @@ const handleFileUpload = async (event: Event): Promise<void> => {
                     class="h-14 border-b border-border bg-card px-4 flex items-center justify-between gap-4 transition-colors"
                 >
                     <!-- Breadcrumb -->
-                    <div class="flex items-center gap-2 min-w-0">
-                        <button
-                            @click="navigateTo('')"
-                            class="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
-                        >
-                            <Home class="w-4 h-4" />
-                        </button>
-                        <template
-                            v-for="crumb in breadcrumbs"
-                            :key="crumb.path"
-                        >
-                            <ChevronRight
-                                class="w-4 h-4 text-muted-foreground/50 flex-shrink-0"
-                            />
-                            <button
-                                @click="navigateTo(crumb.path)"
-                                class="text-sm font-medium text-foreground hover:text-primary transition-colors truncate"
-                            >
-                                {{ crumb.name }}
-                            </button>
-                        </template>
-                    </div>
+                    <AppBreadcrumb :items="breadcrumbItems" />
 
                     <!-- Search -->
                     <div class="relative w-64">
@@ -1197,8 +1190,15 @@ const handleFileUpload = async (event: Event): Promise<void> => {
 
                 <!-- Toolbar -->
                 <div
-                    class="h-12 border-b border-border bg-card px-4 flex items-center gap-2 transition-colors"
+                    class="h-12 border-b border-border bg-card px-4 flex items-center gap-2 transition-colors relative"
                 >
+                    <!-- <router-link
+                        to="/dashboard/files-v2"
+                        class="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 rounded-lg transition-colors absolute right-4"
+                    >
+                        <Sparkles class="w-4 h-4" />
+                        <span>Try New File Manager</span>
+                    </router-link> -->
                     <button
                         @click="showNewFileModal = true"
                         class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted rounded-lg transition-colors"

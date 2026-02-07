@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue'
 import { domainService, securityService } from '@/services'
-import { ChevronLeft, Search, RefreshCw, FileText, Globe, Code, Database, FolderOpen, Bug, TrendingUp, Settings } from 'lucide-vue-next'
+import { Search, RefreshCw, FileText, Globe, Code, Database, FolderOpen, Bug, TrendingUp, Settings, Shield } from 'lucide-vue-next'
 
 const domains = ref<any[]>([])
+const router = useRouter()
 const isLoading = ref(true)
 const searchQuery = ref('')
 const rulesTriggered = ref(0)
@@ -212,7 +215,13 @@ onMounted(fetchData)
     <div class="space-y-8">
         <div class="flex flex-wrap justify-between items-end gap-4">
             <div>
-                <router-link to="/dashboard/security" class="flex items-center gap-1 text-sm font-bold text-primary hover:underline mb-4"><ChevronLeft :size="16" />Back to Security Center</router-link>
+                <AppBreadcrumb
+                    class="mb-4"
+                    :items="[
+                        { label: 'Security Center', icon: Shield, onClick: () => router.push('/dashboard/security') },
+                        { label: 'ModSecurity', current: true }
+                    ]"
+                />
                 <div class="flex items-center gap-3"><h2 class="text-3xl font-black text-[#0d131b] dark:text-white">ModSecurity</h2><span class="bg-success text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full">Active</span></div>
                 <p class="text-slate-500 text-sm mt-2 max-w-xl">Web Application Firewall (WAF) to protect against SQL injection, XSS, and more.</p>
             </div>

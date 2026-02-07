@@ -28,10 +28,9 @@ export const authService = {
 
   /**
    * Refresh access token menggunakan refresh token
-   * @param refreshToken Refresh token yang valid
    */
-  refresh: (refreshToken: string) => 
-    api.post<ApiResponse<TokenPair>>('/auth/refresh', { refresh_token: refreshToken }),
+  refresh: () => 
+    api.post<ApiResponse<TokenPair>>('/auth/refresh'),
 
   /**
    * Mendapatkan informasi user yang sedang login

@@ -3,18 +3,21 @@
  * NpmManagerPage - NPM Package Manager with NVM & Env Vars
  */
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue'
 import { useToastStore } from '@/stores/toast'
 import { nodejsService } from '@/services/nodejs.service'
 import { useAuthStore } from '@/stores/auth'
 import {
     Download, Play, Search, ArrowUp, Trash2, Terminal, 
     Plus, RefreshCw, Box, Eye, EyeOff,
-    Cpu
+    Cpu, Settings
 } from 'lucide-vue-next'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
+const router = useRouter()
 
 // ==========================================
 // STATE
@@ -394,11 +397,13 @@ onMounted(async () => {
         
         <!-- Header -->
         <div class="mb-4">
-             <div class="flex items-center gap-2 mb-2">
-                <router-link to="/dashboard/system" class="text-muted-foreground text-sm hover:text-primary transition-colors">System Tools</router-link>
-                <span class="text-muted-foreground/50">/</span>
-                <span class="text-foreground text-sm font-medium">NPM Manager</span>
-            </div>
+            <AppBreadcrumb
+                class="mb-2"
+                :items="[
+                    { label: 'System Tools', icon: Settings, onClick: () => router.push('/dashboard/system') },
+                    { label: 'NPM Manager', current: true }
+                ]"
+            />
             <h2 class="text-3xl font-black text-foreground tracking-tight mb-2">NPM & Node Version Manager</h2>
             <p class="text-muted-foreground max-w-2xl text-base">
                 Manage your Node.js application environments, dependencies, and run NPM scripts directly from your dashboard.

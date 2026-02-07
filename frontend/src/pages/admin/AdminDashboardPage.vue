@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { userService, securityService, systemService } from '@/services'
 import { useToastStore } from '@/stores/toast'
 import type { AdminUserStats, UserResponse } from '@/types'
@@ -141,10 +143,10 @@ onMounted(() => {
       <!-- Header -->
       <div class="flex flex-wrap justify-between items-end gap-4">
         <div>
-          <h1 class="text-3xl font-black text-[#0d131b] dark:text-white">Admin Dashboard</h1>
-          <p class="text-slate-500 text-sm mt-2">Server health, monitoring, and user activity overview.</p>
+          <h1 class="text-3xl font-black text-foreground">Admin Dashboard</h1>
+          <p class="text-muted-foreground text-sm mt-2">Server health, monitoring, and user activity overview.</p>
         </div>
-        <div class="flex items-center gap-2 text-xs font-semibold text-slate-500">
+        <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
           <Server class="w-4 h-4" />
           <span>System Control Center</span>
         </div>
@@ -152,59 +154,67 @@ onMounted(() => {
 
       <!-- Stats -->
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div
+        <Card
           v-for="card in statsCards"
           :key="card.label"
-          class="bg-card border border-border rounded-2xl p-5 flex items-center gap-4 hover:border-primary/30 transition-colors"
+          class="rounded-2xl hover:border-primary/30 transition-colors"
         >
-          <div :class="['p-3 rounded-xl', card.bg, card.color]">
-            <component :is="card.icon" class="w-5 h-5" />
-          </div>
-          <div>
-            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{{ card.label }}</p>
-            <p class="text-2xl font-bold text-foreground">{{ card.value }}</p>
-          </div>
-        </div>
+          <CardContent class="p-5 flex items-center gap-4">
+            <div :class="['p-3 rounded-xl', card.bg, card.color]">
+              <component :is="card.icon" class="w-5 h-5" />
+            </div>
+            <div>
+              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{{ card.label }}</p>
+              <p class="text-2xl font-bold text-foreground">{{ card.value }}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <!-- Main Panels -->
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <!-- Latest Users -->
-        <div class="xl:col-span-2 bg-card border border-border rounded-2xl p-6">
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center gap-2">
-              <Users class="w-4 h-4 text-primary" />
-              <h3 class="text-lg font-bold text-foreground">New Users</h3>
-            </div>
-            <router-link to="/dashboard/users" class="text-xs font-semibold text-primary hover:underline">View all</router-link>
-          </div>
-          <div v-if="isLoadingUsers" class="text-sm text-muted-foreground">Loading users...</div>
-          <div v-else class="space-y-3">
-            <div
-              v-for="user in latestUsers"
-              :key="user.id"
-              class="flex items-center justify-between bg-background border border-border rounded-xl px-4 py-3"
-            >
-              <div>
-                <p class="text-sm font-semibold text-foreground">{{ user.full_name || user.username }}</p>
-                <p class="text-xs text-muted-foreground">{{ user.email }}</p>
+        <Card class="xl:col-span-2 rounded-2xl">
+          <CardHeader class="pb-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <Users class="w-4 h-4 text-primary" />
+                <CardTitle>New Users</CardTitle>
               </div>
-              <div class="text-right">
-                <p class="text-xs font-semibold text-muted-foreground">{{ formatDate(user.created_at) }}</p>
-                <span class="text-[10px] uppercase tracking-wide text-slate-500">{{ user.role }}</span>
-              </div>
+              <router-link to="/dashboard/users" class="text-xs font-semibold text-primary hover:underline">View all</router-link>
             </div>
-            <div v-if="latestUsers.length === 0" class="text-sm text-muted-foreground">No users found.</div>
-          </div>
-        </div>
+          </CardHeader>
+          <CardContent>
+            <div v-if="isLoadingUsers" class="text-sm text-muted-foreground">Loading users...</div>
+            <div v-else class="space-y-3">
+              <div
+                v-for="user in latestUsers"
+                :key="user.id"
+                class="flex items-center justify-between bg-background border border-border rounded-xl px-4 py-3"
+              >
+                <div>
+                  <p class="text-sm font-semibold text-foreground">{{ user.full_name || user.username }}</p>
+                  <p class="text-xs text-muted-foreground">{{ user.email }}</p>
+                </div>
+                <div class="text-right">
+                  <p class="text-xs font-semibold text-muted-foreground">{{ formatDate(user.created_at) }}</p>
+                  <Badge variant="secondary" size="sm">{{ user.role }}</Badge>
+                </div>
+              </div>
+              <div v-if="latestUsers.length === 0" class="text-sm text-muted-foreground">No users found.</div>
+            </div>
+          </CardContent>
+        </Card>
 
         <!-- Monitoring -->
-        <div class="bg-card border border-border rounded-2xl p-6">
-          <div class="flex items-center gap-2 mb-4">
-            <Activity class="w-4 h-4 text-primary" />
-            <h3 class="text-lg font-bold text-foreground">Monitoring</h3>
-          </div>
-          <div class="space-y-4">
+        <Card class="rounded-2xl">
+          <CardHeader class="pb-4">
+            <div class="flex items-center gap-2">
+              <Activity class="w-4 h-4 text-primary" />
+              <CardTitle>Monitoring</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-4">
             <div class="p-4 rounded-xl bg-background border border-border">
               <p class="text-xs uppercase tracking-wide text-muted-foreground font-semibold mb-1">Security Events</p>
               <p class="text-2xl font-bold text-foreground">{{ accessLogs.length }}</p>
@@ -214,33 +224,37 @@ onMounted(() => {
               <p class="text-xs uppercase tracking-wide text-muted-foreground font-semibold mb-1">Service Health</p>
               <p class="text-sm text-foreground">Monitoring data is updated automatically from the server.</p>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       <!-- Recent Security Logs -->
-      <div class="bg-card border border-border rounded-2xl p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <Shield class="w-4 h-4 text-primary" />
-          <h3 class="text-lg font-bold text-foreground">Recent Security Logs</h3>
-        </div>
-        <div class="space-y-3">
-          <div
-            v-for="log in accessLogs.slice(0, 6)"
-            :key="log.id"
-            class="flex items-center justify-between bg-background border border-border rounded-xl px-4 py-3"
-          >
-            <div>
-              <p class="text-sm font-semibold text-foreground">{{ log.event_type }}</p>
-              <p class="text-xs text-muted-foreground">{{ log.ip_address || 'unknown' }}</p>
-            </div>
-            <div class="text-right text-xs text-muted-foreground">
-              {{ log.timestamp ? formatDate(log.timestamp) : '—' }}
-            </div>
+      <Card class="rounded-2xl">
+        <CardHeader class="pb-4">
+          <div class="flex items-center gap-2">
+            <Shield class="w-4 h-4 text-primary" />
+            <CardTitle>Recent Security Logs</CardTitle>
           </div>
-          <div v-if="accessLogs.length === 0" class="text-sm text-muted-foreground">No security logs available.</div>
-        </div>
-      </div>
+        </CardHeader>
+        <CardContent>
+          <div class="space-y-3">
+            <div
+              v-for="log in accessLogs.slice(0, 6)"
+              :key="log.id"
+              class="flex items-center justify-between bg-background border border-border rounded-xl px-4 py-3"
+            >
+              <div>
+                <p class="text-sm font-semibold text-foreground">{{ log.event_type }}</p>
+                <p class="text-xs text-muted-foreground">{{ log.ip_address || 'unknown' }}</p>
+              </div>
+              <div class="text-right text-xs text-muted-foreground">
+                {{ log.timestamp ? formatDate(log.timestamp) : '—' }}
+              </div>
+            </div>
+            <div v-if="accessLogs.length === 0" class="text-sm text-muted-foreground">No security logs available.</div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   </MainLayout>
 </template>

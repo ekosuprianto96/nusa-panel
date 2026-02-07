@@ -1,16 +1,14 @@
 <script setup lang="ts">
 /**
  * ProcessManagerPage - PM2 Process Management
- * 
- * Features:
- * - Real-time process list (PM2)
- * - Start/Stop/Restart/Delete processes
- * - Environment Variable Management (.env editor)
- * - Live Log Stream (UI Only)
  */
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
-import { nodejsService, type Pm2Process } from '@/services/nodejs.service'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button, Input } from '@/components/ui'
+import { Badge } from '@/components/ui/badge'
+import { nodejsService } from '@/services/nodejs.service'
+import type { Pm2Process } from '@/types'
 import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth'
 import { 
@@ -30,7 +28,7 @@ const liveUpdate = ref(true)
 let pollInterval: any = null
 
 // Env Vars State
-const envPath = ref('')  // Default path resolved from user
+const envPath = ref('')
 const envVars = ref<{ key: string, value: string, hidden: boolean }[]>([])
 const isLoadingEnv = ref(false)
 const showAddEnvModal = ref(false)
@@ -46,8 +44,8 @@ const logs = ref<string[]>([
 // Computed Stats
 const stats = computed(() => {
     const total = processes.value.length
-    const running = processes.value.filter(p => p.status === 'online').length
-    const errored = processes.value.filter(p => p.status === 'errored').length
+    const running = processes.value.filter((p: Pm2Process) => p.status === 'online').length
+    const errored = processes.value.filter((p: Pm2Process) => p.status === 'errored').length
     const stopped = total - running - errored
     return { total, running, errored, stopped }
 })
@@ -55,7 +53,7 @@ const stats = computed(() => {
 const filteredProcesses = computed(() => {
     if (!searchQuery.value) return processes.value
     const q = searchQuery.value.toLowerCase()
-    return processes.value.filter(p => 
+    return processes.value.filter((p: Pm2Process) => 
         p.name.toLowerCase().includes(q) || 
         p.pid.toString().includes(q)
     )
@@ -68,7 +66,6 @@ const fetchProcesses = async () => {
         processes.value = res.data.data
     } catch (e) {
         console.error('Failed to fetch PM2 list:', e)
-        // Keep previous data on error to avoid flickering, or show toast if critical
     } finally {
         isLoading.value = false
     }
@@ -112,7 +109,6 @@ const fetchEnvVars = async () => {
     isLoadingEnv.value = true
     try {
         const res = await nodejsService.getEnvVars(envPath.value)
-        // Parse "KEY=VALUE" strings
         envVars.value = res.data.data.map(line => {
              const [key, ...rest] = line.split('=')
              return { key: (key || '').trim(), value: rest.join('=').trim(), hidden: true }
@@ -150,7 +146,6 @@ const deleteEnvVar = async (key: string) => {
 }
 
 const formatUptime = (ms: number) => {
-    // PM2 returns uptime as timestamp (start time)
     const now = Date.now()
     const diff = now - ms
     const seconds = Math.floor(diff / 1000)
@@ -176,7 +171,6 @@ onMounted(() => {
         if (liveUpdate.value) fetchProcesses()
     }, 2000)
     
-    // Simulate log stream
     setInterval(() => {
         if (processes.value.length > 0) {
             const randomProc = processes.value[Math.floor(Math.random() * processes.value.length)]
@@ -211,204 +205,203 @@ onUnmounted(() => {
         <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
             <!-- Header -->
             <div class="mb-8">
-                <h2 class="text-[#0d131b] dark:text-white text-4xl font-black leading-tight tracking-tight">PM2 Process Manager</h2>
-                <p class="text-slate-500 dark:text-slate-400 text-base max-w-lg leading-relaxed mt-2">
+                <h2 class="text-foreground text-4xl font-black leading-tight tracking-tight">PM2 Process Manager</h2>
+                <p class="text-muted-foreground text-base max-w-lg leading-relaxed mt-2">
                     Monitor and control your Node.js application processes in real-time with PM2.
                 </p>
             </div>
 
             <!-- Stats Cards -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <!-- Total -->
-                <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Processes</p>
-                        <h3 class="text-2xl font-black text-[#0d131b] dark:text-white">{{ stats.total }}</h3>
-                    </div>
-                    <div class="bg-slate-100 dark:bg-slate-800 p-2 rounded-lg text-slate-500">
-                        <List :size="20" />
-                    </div>
-                </div>
-                <!-- Running -->
-                <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Running</p>
-                        <h3 class="text-2xl font-black text-emerald-600 dark:text-white">{{ stats.running }}</h3>
-                    </div>
-                    <div class="bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-lg text-emerald-600">
-                        <CheckCircle :size="20" />
-                    </div>
-                </div>
-                <!-- Errored -->
-                <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p class="text-xs font-bold text-rose-600 uppercase tracking-wider mb-1">Errored</p>
-                        <h3 class="text-2xl font-black text-rose-600 dark:text-white">{{ stats.errored }}</h3>
-                    </div>
-                    <div class="bg-rose-50 dark:bg-rose-900/20 p-2 rounded-lg text-rose-600">
-                        <AlertCircle :size="20" />
-                    </div>
-                </div>
-                <!-- Stopped -->
-                <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Stopped</p>
-                        <h3 class="text-2xl font-black text-slate-400 dark:text-white">{{ stats.stopped }}</h3>
-                    </div>
-                    <div class="bg-slate-100 dark:bg-slate-800 p-2 rounded-lg text-slate-400">
-                        <StopCircle :size="20" />
-                    </div>
-                </div>
+                <Card class="rounded-xl">
+                    <CardContent class="p-4 flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Processes</p>
+                            <h3 class="text-2xl font-black text-foreground">{{ stats.total }}</h3>
+                        </div>
+                        <div class="bg-muted p-2 rounded-lg text-muted-foreground">
+                            <List :size="20" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card class="rounded-xl">
+                    <CardContent class="p-4 flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Running</p>
+                            <h3 class="text-2xl font-black text-emerald-600">{{ stats.running }}</h3>
+                        </div>
+                        <div class="bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-lg text-emerald-600">
+                            <CheckCircle :size="20" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card class="rounded-xl">
+                    <CardContent class="p-4 flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-destructive uppercase tracking-wider mb-1">Errored</p>
+                            <h3 class="text-2xl font-black text-destructive">{{ stats.errored }}</h3>
+                        </div>
+                        <div class="bg-destructive/10 p-2 rounded-lg text-destructive">
+                            <AlertCircle :size="20" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card class="rounded-xl">
+                    <CardContent class="p-4 flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Stopped</p>
+                            <h3 class="text-2xl font-black text-muted-foreground">{{ stats.stopped }}</h3>
+                        </div>
+                        <div class="bg-muted p-2 rounded-lg text-muted-foreground">
+                            <StopCircle :size="20" />
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             <!-- Controls -->
-            <div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm mb-6 flex flex-wrap items-center justify-between gap-4">
-                <div class="flex items-center gap-4">
-                    <button @click="handleRestartAll" class="bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-lg flex items-center gap-2 transition-all shadow-md">
-                        <RefreshCw :size="18" /> Restart All
-                    </button>
-                    <button @click="handleStopAll" class="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 px-5 rounded-lg flex items-center gap-2 transition-all shadow-md">
-                        <Square :size="18" fill="currentColor" /> Stop All
-                    </button>
-                </div>
-                <div class="flex items-center gap-3">
-                    <button disabled class="opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold py-2.5 px-5 rounded-lg flex items-center gap-2 transition-all">
-                        <Plus :size="18" /> New Process
-                    </button>
-                </div>
-            </div>
+            <Card class="rounded-xl mb-6">
+                <CardContent class="p-6 flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <Button @click="handleRestartAll">
+                            <RefreshCw :size="18" class="mr-2" /> Restart All
+                        </Button>
+                        <Button variant="destructive" @click="handleStopAll">
+                            <Square :size="18" fill="currentColor" class="mr-2" /> Stop All
+                        </Button>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <Button variant="outline" disabled>
+                            <Plus :size="18" class="mr-2" /> New Process
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
 
             <!-- Process List -->
             <div class="mb-10">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                    <h3 class="text-[#0d131b] dark:text-white text-xl font-bold tracking-tight">Process List</h3>
+                    <h3 class="text-foreground text-xl font-bold tracking-tight">Process List</h3>
                     <div class="w-full md:w-96 relative group">
-                        <div class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
-                            <Search :size="20" />
-                        </div>
-                        <input v-model="searchQuery" class="block w-full h-11 pl-11 pr-4 rounded-lg border-none bg-white dark:bg-slate-800 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700 focus:ring-2 focus:ring-primary text-[#0d131b] dark:text-white placeholder:text-slate-400 text-sm font-medium" placeholder="Search processes..." type="text"/>
+                        <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                        <Input v-model="searchQuery" class="h-11 pl-11" placeholder="Search processes..." />
                     </div>
                 </div>
 
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                <Card class="rounded-xl overflow-hidden">
                     <table class="w-full text-left border-collapse min-w-[800px]">
                         <thead>
-                            <tr class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PID</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Uptime</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">CPU</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Memory</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Restarts</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                            <tr class="bg-muted/50 border-b border-border">
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">PID</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Uptime</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">CPU</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Memory</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Restarts</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                        <tbody class="divide-y divide-border">
                             <tr v-if="isLoading" class="animate-pulse">
-                                <td colspan="8" class="px-6 py-8 text-center text-slate-500">Loading processes...</td>
+                                <td colspan="8" class="px-6 py-8 text-center text-muted-foreground">Loading processes...</td>
                             </tr>
                             <tr v-else-if="filteredProcesses.length === 0">
-                                <td colspan="8" class="px-6 py-8 text-center text-slate-500">No processes found</td>
+                                <td colspan="8" class="px-6 py-8 text-center text-muted-foreground">No processes found</td>
                             </tr>
-                            <tr v-for="proc in filteredProcesses" :key="proc.pm_id" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <tr v-for="proc in filteredProcesses" :key="proc.pm_id" class="hover:bg-muted/30 transition-colors">
                                 <td class="px-6 py-4">
-                                    <div class="flex items-center gap-2">
-                                        <span :class="['size-2.5 rounded-full', proc.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400']"></span>
-                                        <span :class="['text-xs font-bold uppercase tracking-tighter', proc.status === 'online' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500']">{{ proc.status }}</span>
-                                    </div>
+                                    <Badge :variant="proc.status === 'online' ? 'success' : 'secondary'">
+                                        {{ proc.status }}
+                                    </Badge>
                                 </td>
-                                <td class="px-6 py-4"><span class="font-bold text-[#0d131b] dark:text-white">{{ proc.name }}</span></td>
-                                <td class="px-6 py-4 font-mono text-xs text-slate-500">{{ proc.pid }}</td>
-                                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatUptime(proc.uptime) }}</td>
-                                <td class="px-6 py-4"><span class="text-xs font-bold text-slate-700 dark:text-slate-300">{{ proc.cpu }}%</span></td>
-                                <td class="px-6 py-4"><span class="text-xs font-bold text-slate-700 dark:text-slate-300">{{ formatMemory(proc.memory) }}</span></td>
-                                <td class="px-6 py-4"><span class="px-2 py-1 text-[10px] font-bold rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">{{ proc.restarts }}</span></td>
+                                <td class="px-6 py-4"><span class="font-bold text-foreground">{{ proc.name }}</span></td>
+                                <td class="px-6 py-4 font-mono text-xs text-muted-foreground">{{ proc.pid }}</td>
+                                <td class="px-6 py-4 text-sm text-muted-foreground">{{ formatUptime(proc.uptime) }}</td>
+                                <td class="px-6 py-4"><span class="text-xs font-bold text-foreground">{{ proc.cpu }}%</span></td>
+                                <td class="px-6 py-4"><span class="text-xs font-bold text-foreground">{{ formatMemory(proc.memory) }}</span></td>
+                                <td class="px-6 py-4"><Badge variant="secondary">{{ proc.restarts }}</Badge></td>
                                 <td class="px-6 py-4 text-right">
                                     <div class="flex justify-end gap-2">
-                                        <button v-if="proc.status === 'online'" @click="handleAction('stop', proc.name)" class="p-2 text-slate-400 hover:text-amber-500 transition-colors" title="Stop">
-                                            <Square :size="18" fill="currentColor" />
-                                        </button>
-                                        <button v-else @click="handleAction('start', proc.name)" class="p-2 text-emerald-500 hover:text-emerald-600 transition-colors" title="Start">
-                                            <Play :size="18" fill="currentColor" />
-                                        </button>
-                                        <button @click="handleAction('restart', proc.name)" class="p-2 text-slate-400 hover:text-primary transition-colors" title="Restart">
+                                        <Button v-if="proc.status === 'online'" variant="ghost" size="icon" @click="handleAction('stop', proc.name)" title="Stop">
+                                            <Square :size="18" fill="currentColor" class="text-amber-500" />
+                                        </Button>
+                                        <Button v-else variant="ghost" size="icon" @click="handleAction('start', proc.name)" title="Start">
+                                            <Play :size="18" fill="currentColor" class="text-emerald-500" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" @click="handleAction('restart', proc.name)" title="Restart">
                                             <RefreshCw :size="18" />
-                                        </button>
-                                        <button @click="handleAction('delete', proc.name)" class="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Delete">
+                                        </Button>
+                                        <Button variant="ghost" size="icon" @click="handleAction('delete', proc.name)" class="text-destructive" title="Delete">
                                             <Trash2 :size="18" />
-                                        </button>
+                                        </Button>
                                     </div>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
-                </div>
+                </Card>
             </div>
 
             <!-- Environment Variables -->
             <div class="mb-10">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div class="flex flex-col">
-                        <h3 class="text-[#0d131b] dark:text-white text-xl font-bold tracking-tight">Environment Variables</h3>
-                        <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">Configure secrets and runtime settings for your application.</p>
+                        <h3 class="text-foreground text-xl font-bold tracking-tight">Environment Variables</h3>
+                        <p class="text-muted-foreground text-xs mt-1">Configure secrets and runtime settings for your application.</p>
                     </div>
                     <div class="flex gap-2">
-                        <input v-model="envPath" type="text" placeholder="/path/to/project" class="h-9 px-3 rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs" />
-                        <button @click="fetchEnvVars" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-white px-3 py-2 rounded-lg text-xs font-bold">Load</button>
-                        <button @click="showAddEnvModal = true" class="bg-primary text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2 hover:bg-primary/90 transition-all shadow-sm">
-                            <Plus :size="18" /> Add Variable
-                        </button>
+                        <Input v-model="envPath" type="text" placeholder="/path/to/project" class="h-9 text-xs w-48" />
+                        <Button variant="outline" size="sm" @click="fetchEnvVars">Load</Button>
+                        <Button size="sm" @click="showAddEnvModal = true">
+                            <Plus :size="18" class="mr-2" /> Add Variable
+                        </Button>
                     </div>
                 </div>
 
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                <Card class="rounded-xl overflow-hidden">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Key</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Value</th>
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                            <tr class="bg-muted/50 border-b border-border">
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Key</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Value</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                            <tr v-if="envVars.length === 0"><td colspan="3" class="px-6 py-4 text-center text-sm text-slate-500">No variables loaded. Enter path and click Load.</td></tr>
-                            <tr v-for="v in envVars" :key="v.key" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                        <tbody class="divide-y divide-border">
+                            <tr v-if="envVars.length === 0"><td colspan="3" class="px-6 py-4 text-center text-sm text-muted-foreground">No variables loaded. Enter path and click Load.</td></tr>
+                            <tr v-for="v in envVars" :key="v.key" class="hover:bg-muted/30 transition-colors">
                                 <td class="px-6 py-4">
-                                    <code class="text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{{ v.key }}</code>
+                                    <code class="text-xs font-bold text-foreground bg-muted px-1.5 py-0.5 rounded">{{ v.key }}</code>
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-2">
-                                        <span class="text-sm font-mono text-slate-600 dark:text-slate-400">{{ v.hidden ? '••••••••' : v.value }}</span>
-                                        <button @click="v.hidden = !v.hidden" class="text-slate-400 hover:text-primary transition-colors">
+                                        <span class="text-sm font-mono text-muted-foreground">{{ v.hidden ? '••••••••' : v.value }}</span>
+                                        <Button variant="ghost" size="icon" @click="v.hidden = !v.hidden">
                                             <component :is="v.hidden ? Eye : EyeOff" :size="16" />
-                                        </button>
+                                        </Button>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 text-right">
-                                    <div class="flex justify-end gap-2">
-                                        <button @click="deleteEnvVar(v.key)" class="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Delete">
-                                            <Trash2 :size="18" />
-                                        </button>
-                                    </div>
+                                    <Button variant="ghost" size="icon" @click="deleteEnvVar(v.key)" class="text-destructive" title="Delete">
+                                        <Trash2 :size="18" />
+                                    </Button>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
-                </div>
+                </Card>
             </div>
 
-             <!-- Live Log Stream -->
-             <div class="flex items-center justify-between mb-4">
+            <!-- Live Log Stream -->
+            <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
-                    <h3 class="text-[#0d131b] dark:text-white text-xl font-bold tracking-tight">Live Log Stream</h3>
-                    <span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded uppercase">PM2</span>
+                    <h3 class="text-foreground text-xl font-bold tracking-tight">Live Log Stream</h3>
+                    <Badge variant="default">PM2</Badge>
                 </div>
-                <div class="flex gap-2">
-                    <button @click="logs = []" class="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center gap-1 transition-colors">
-                        <Ban :size="14" /> Clear
-                    </button>
-                </div>
+                <Button variant="ghost" size="sm" @click="logs = []">
+                    <Ban :size="14" class="mr-1" /> Clear
+                </Button>
             </div>
             <div class="bg-slate-900 rounded-xl border border-slate-800 shadow-lg overflow-hidden flex flex-col mb-8 h-80 group">
                 <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
@@ -428,7 +421,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Footer -->
-            <footer class="p-8 text-center text-slate-400 text-sm">
+            <footer class="p-8 text-center text-muted-foreground text-sm">
                 © 2024 WebHost Hosting Solutions. PM2 Integration | Node.js
             </footer>
         </div>
@@ -436,23 +429,25 @@ onUnmounted(() => {
 
     <!-- Add Env Modal -->
     <div v-if="showAddEnvModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-200 dark:border-slate-800">
-            <h3 class="text-lg font-bold mb-4 text-[#0d131b] dark:text-white">Add Environment Variable</h3>
-            <div class="space-y-4">
+        <Card class="w-full max-w-md">
+            <CardHeader>
+                <CardTitle>Add Environment Variable</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-4">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">Key</label>
-                    <input v-model="newEnv.key" type="text" class="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="API_KEY">
+                    <label class="block text-xs font-bold text-muted-foreground mb-1">Key</label>
+                    <Input v-model="newEnv.key" type="text" placeholder="API_KEY" />
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">Value</label>
-                    <input v-model="newEnv.value" type="text" class="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="secret_value">
+                    <label class="block text-xs font-bold text-muted-foreground mb-1">Value</label>
+                    <Input v-model="newEnv.value" type="text" placeholder="secret_value" />
                 </div>
                 <div class="flex justify-end gap-2 mt-6">
-                    <button @click="showAddEnvModal = false" class="px-4 py-2 text-slate-500 hover:text-slate-700 font-bold text-sm">Cancel</button>
-                    <button @click="saveEnvVar" class="px-4 py-2 bg-primary text-white rounded-lg font-bold text-sm">Save</button>
+                    <Button variant="outline" @click="showAddEnvModal = false">Cancel</Button>
+                    <Button @click="saveEnvVar">Save</Button>
                 </div>
-            </div>
-        </div>
+            </CardContent>
+        </Card>
     </div>
 </MainLayout>
 </template>

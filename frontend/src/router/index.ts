@@ -71,6 +71,15 @@ const router = createRouter({
             redirect: '/dashboard/files',
         },
         {
+            path: '/dashboard/files-v2',
+            name: 'VueFinder',
+            meta: {
+                requiresAuth: true,
+                title: 'File Manager V2',
+            },
+            component: () => import('@/pages/files/VueFinderPage.vue'),
+        },
+        {
             path: '/dashboard/files',
             name: 'FileManager',
             meta: {
@@ -219,6 +228,12 @@ const router = createRouter({
             component: () => import('@/pages/system/CronJobsPage.vue'),
         },
         {
+            path: '/dashboard/system/backups',
+            name: 'Backups',
+            meta: { requiresAuth: true, title: 'Backup Management' },
+            component: () => import('@/pages/system/BackupsPage.vue'),
+        },
+        {
             path: '/dashboard/system/php-manager',
             name: 'PhpManager',
             meta: { requiresAuth: true, title: 'PHP Manager' },
@@ -299,7 +314,10 @@ const router = createRouter({
 
 router.beforeEach(async (to, _from, next) => {
     // const isAuthenticated = true
-    const isAuthenticated = !!localStorage.getItem('access_token');
+    const { useAuthStore } = await import('@/stores/auth');
+    const authStore = useAuthStore();
+    await authStore.checkSession();
+    const isAuthenticated = authStore.isLoggedIn;
 
     if (to.meta.requiresAuth && !isAuthenticated) {
         next('/auth/login');
@@ -307,11 +325,8 @@ router.beforeEach(async (to, _from, next) => {
         next('/dashboard');
     } else if (to.meta.requiresAdmin && isAuthenticated) {
         // Check for admin/reseller role
-        const { useAuthStore } = await import('@/stores/auth');
-        const authStore = useAuthStore();
-
         // Ensure user data is loaded
-        if (!authStore.user && authStore.accessToken) {
+        if (!authStore.user && authStore.isLoggedIn) {
             await authStore.fetchMe();
         }
 
@@ -326,10 +341,7 @@ router.beforeEach(async (to, _from, next) => {
         }
     } else {
         if (isAuthenticated) {
-            const { useAuthStore } = await import('@/stores/auth');
-            const authStore = useAuthStore();
-
-            if (!authStore.user && authStore.accessToken) {
+            if (!authStore.user && authStore.isLoggedIn) {
                 await authStore.fetchMe();
             }
 

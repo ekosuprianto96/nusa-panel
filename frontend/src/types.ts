@@ -250,6 +250,26 @@ export interface DomainResponse extends Domain {
     dns_records_count: number;
 }
 
+export interface DdnsHostResponse {
+    id: string;
+    domain_id: string;
+    hostname: string;
+    description?: string | null;
+    last_ip?: string | null;
+    last_updated_at?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface DdnsHostCreateResponse {
+    id: string;
+    domain_id: string;
+    hostname: string;
+    description?: string | null;
+    api_key: string;
+    created_at: string;
+}
+
 export interface Subdomain {
     id: string;
     domain_id: string;

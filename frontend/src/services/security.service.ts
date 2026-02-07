@@ -39,7 +39,7 @@ export const securityService = {
     api.get<ApiResponse<{ enabled: boolean }>>('/security/2fa/status'),
 
   setup2fa: () =>
-    api.post<ApiResponse<{ qr_code: string, secret: string }>>('/security/2fa/setup'),
+    api.post<ApiResponse<{ qr_code: string, secret: string, backup_codes?: string[] }>>('/security/2fa/setup'),
 
   verify2fa: (data: { code: string }) =>
     api.post<ApiResponse<void>>('/security/2fa/verify', data),

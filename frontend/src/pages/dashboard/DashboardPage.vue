@@ -3,6 +3,8 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { computed } from 'vue'
+import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui'
 import { 
   Folder, Database, Globe, Mail, 
   Activity, HardDrive
@@ -77,54 +79,59 @@ const quickActions = [
       <!-- Welcome & Stats Row -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Welcome Card -->
-        <div class="lg:col-span-2 relative overflow-hidden bg-card border border-border rounded-2xl p-6 flex flex-col justify-between">
-          <div class="relative z-10">
-            <h1 class="text-2xl font-bold text-foreground">Welcome back, {{ authStore.user?.username || 'User' }}!</h1>
-            <p class="text-muted-foreground mt-2 text-sm max-w-md">
-              Your server is currently running smoothly. You have used {{ resourceStats[0]?.val }} of {{ resourceStats[0]?.total }} disk space.
-            </p>
-            
-            <!-- Quick Actions -->
-            <div class="mt-8">
-              <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Quick Actions</h3>
-              <div class="flex flex-wrap gap-3">
-                <button 
-                  v-for="action in quickActions"
-                  :key="action.title"
-                  @click="navigateTo(action.link)"
-                  class="flex items-center gap-2 px-4 py-2.5 bg-background border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm"
-                >
-                  <div :class="['p-1.5 rounded-md', action.bg, action.color]">
-                    <component :is="action.icon" class="w-4 h-4" />
-                  </div>
-                  <span class="text-sm font-medium">{{ action.title }}</span>
-                </button>
+        <Card class="lg:col-span-2 relative overflow-hidden rounded-2xl">
+          <CardContent class="p-6">
+            <div class="relative z-10">
+              <CardTitle class="text-2xl">Welcome back, {{ authStore.user?.username || 'User' }}!</CardTitle>
+              <CardDescription class="mt-2 max-w-md">
+                Your server is currently running smoothly. You have used {{ resourceStats[0]?.val }} of {{ resourceStats[0]?.total }} disk space.
+              </CardDescription>
+              
+              <!-- Quick Actions -->
+              <div class="mt-8">
+                <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Quick Actions</h3>
+                <div class="flex flex-wrap gap-3">
+                  <Button 
+                    v-for="action in quickActions"
+                    :key="action.title"
+                    variant="outline"
+                    @click="navigateTo(action.link)"
+                    class="flex items-center gap-2 hover:border-primary/50"
+                  >
+                    <div :class="['p-1.5 rounded-md', action.bg, action.color]">
+                      <component :is="action.icon" class="w-4 h-4" />
+                    </div>
+                    <span class="text-sm font-medium">{{ action.title }}</span>
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
+          </CardContent>
           
           <!-- Decorative Blob -->
           <div class="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        </div>
+        </Card>
 
         <!-- Stats Grid -->
         <div class="grid grid-cols-2 gap-3">
-          <div 
+          <Card 
             v-for="stat in resourceStats" 
             :key="stat.label"
-            class="bg-card border border-border p-4 rounded-2xl flex flex-col justify-center gap-2 hover:border-primary/20 transition-colors"
+            class="rounded-2xl hover:border-primary/20 transition-colors"
           >
-            <div class="flex items-center gap-2">
-              <div :class="['p-1.5 rounded-lg', stat.bg, stat.color]">
-                <component :is="stat.icon" class="w-4 h-4" />
+            <CardContent class="p-4 flex flex-col justify-center gap-2">
+              <div class="flex items-center gap-2">
+                <div :class="['p-1.5 rounded-lg', stat.bg, stat.color]">
+                  <component :is="stat.icon" class="w-4 h-4" />
+                </div>
+                <span class="text-[10px] font-semibold text-muted-foreground uppercase truncate">{{ stat.label }}</span>
               </div>
-              <span class="text-[10px] font-semibold text-muted-foreground uppercase truncate">{{ stat.label }}</span>
-            </div>
-            <div>
-              <p class="text-lg font-bold text-foreground">{{ stat.val }}</p>
-              <p class="text-xs text-muted-foreground">of {{ stat.total }}</p>
-            </div>
-          </div>
+              <div>
+                <p class="text-lg font-bold text-foreground">{{ stat.val }}</p>
+                <p class="text-xs text-muted-foreground">of {{ stat.total }}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -138,21 +145,24 @@ const quickActions = [
         </h3>
         
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4">
-          <div 
+          <Card 
             v-for="card in section.cards" 
             :key="card.title"
+            hoverable
             @click="navigateTo(card.link)"
-            class="group bg-card border border-border p-4 rounded-xl hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col gap-3 relative overflow-hidden"
+            class="min-h-[120px] rounded-xl cursor-pointer"
           >
-            <div :class="['w-10 h-10 rounded-lg flex items-center justify-center bg-background border border-border group-hover:border-primary/20 transition-colors', card.color]">
-              <component :is="card.icon" class="w-6 h-6" />
-            </div>
-            
-            <div>
-              <h4 class="font-semibold text-xs text-foreground group-hover:text-primary transition-colors line-clamp-1">{{ card.title }}</h4>
-              <p class="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{{ card.description }}</p>
-            </div>
-          </div>
+            <CardContent class="p-5 flex flex-col gap-3">
+              <div :class="['w-11 h-11 rounded-lg flex items-center justify-center bg-background border border-border group-hover:border-primary/20 transition-colors', card.color]">
+                <component :is="card.icon" class="w-7 h-7" />
+              </div>
+              
+              <div>
+                <h4 class="font-semibold text-sm text-foreground group-hover:text-primary transition-colors line-clamp-1">{{ card.title }}</h4>
+                <p class="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{{ card.description }}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -175,5 +185,4 @@ const quickActions = [
     transform: translateY(0);
   }
 }
-</style> */
-
+</style>

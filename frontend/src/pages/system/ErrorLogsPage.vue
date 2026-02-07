@@ -3,14 +3,20 @@
  * ErrorLogsPage - Error Logs Viewer
  */
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button, Input } from '@/components/ui'
+import { Badge } from '@/components/ui/badge'
 import { systemService } from '@/services'
-import { AlertCircle, Search, Download, Trash2, RefreshCw } from 'lucide-vue-next'
+import { AlertCircle, Search, Download, Trash2, RefreshCw, Settings } from 'lucide-vue-next'
 
 const isLoading = ref(true)
 const searchQuery = ref('')
 const activeFilter = ref('all')
 const logs = ref<any[]>([])
+const router = useRouter()
 
 const toasts = ref<{ id: number; message: string; type: 'success' | 'error' | 'info' }[]>([])
 let toastId = 0
@@ -20,12 +26,12 @@ const showToast = (message: string, type: 'success' | 'error' | 'info' = 'succes
     setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id) }, 4000)
 }
 
-const getLevelClass = (level: string) => {
+const getLevelVariant = (level: string): 'destructive' | 'warning' | 'secondary' | 'success' => {
     const l = level?.toLowerCase() || ''
-    if (l.includes('error') || l.includes('critical') || l.includes('fatal')) return 'bg-red-500/20 text-red-500'
-    if (l.includes('warn')) return 'bg-amber-500/20 text-amber-500'
-    if (l.includes('notice') || l.includes('info')) return 'bg-blue-500/20 text-blue-500'
-    return 'bg-slate-500/20 text-slate-500'
+    if (l.includes('error') || l.includes('critical') || l.includes('fatal')) return 'destructive'
+    if (l.includes('warn')) return 'warning'
+    if (l.includes('notice') || l.includes('info')) return 'secondary'
+    return 'secondary'
 }
 
 const getLevelLabel = (level: string) => {
@@ -54,22 +60,13 @@ const filteredLogs = computed(() => {
 })
 
 const parseLogLine = (line: string, index: number) => {
-    // Try to extract "[timestamp] LEVEL: message" or "[timestamp] LEVEL message"
     const bracketMatch = line.match(/^\[([^\]]+)\]\s*(.*)$/)
-    let timestamp = ''
-    let rest = line
-    if (bracketMatch) {
-        timestamp = bracketMatch[1]
-        rest = bracketMatch[2]
-    }
+    const timestamp = bracketMatch?.[1] ?? ''
+    const rest = bracketMatch?.[2] ?? line
 
-    let level = 'info'
-    let message = rest
     const levelMatch = rest.match(/^(NOTICE|INFO|WARN|WARNING|ERROR|FATAL|CRITICAL)\s*:?\s*(.*)$/i)
-    if (levelMatch) {
-        level = levelMatch[1].toLowerCase()
-        message = levelMatch[2]
-    }
+    const level = (levelMatch?.[1] ?? 'info').toLowerCase()
+    const message = levelMatch?.[2] ?? rest
 
     return {
         id: index + 1,
@@ -91,15 +88,10 @@ const fetchData = async () => {
             })
             : []
     } catch (e) {
-        // Sample data fallback
         logs.value = [
             { id: 1, timestamp: '2024-01-15 14:22:01', level: 'error', message: 'PHP Fatal error: Uncaught Error: Call to undefined function get_users() in /var/www/html/index.php:42' },
             { id: 2, timestamp: '2024-01-15 14:22:05', level: 'warning', message: 'PHP Warning: file_get_contents(): SSL operation failed with code 1 in /var/www/html/api.php:128' },
             { id: 3, timestamp: '2024-01-15 14:23:12', level: 'notice', message: 'PHP Notice: Undefined index: user_id in /var/www/html/dashboard.php:55' },
-            { id: 4, timestamp: '2024-01-15 14:24:45', level: 'error', message: 'MySQL Error: Table \'database.sessions\' doesn\'t exist' },
-            { id: 5, timestamp: '2024-01-15 14:25:01', level: 'warning', message: 'Apache: MaxRequestWorkers limit reached, consider raising this value' },
-            { id: 6, timestamp: '2024-01-15 14:28:10', level: 'notice', message: 'PHP Notice: A session had already been started in /var/www/html/auth.php:12' },
-            { id: 7, timestamp: '2024-01-15 14:30:22', level: 'error', message: 'Fatal error: Allowed memory size of 134217728 bytes exhausted in /var/www/html/import.php:892' }
         ]
     } finally {
         isLoading.value = false
@@ -138,85 +130,89 @@ onMounted(fetchData)
 <template>
 <MainLayout>
     <div class="fixed top-4 right-4 z-50 space-y-2">
-        <div v-for="toast in toasts" :key="toast.id" :class="['px-4 py-3 rounded-lg shadow-lg font-medium text-sm', toast.type === 'success' ? 'bg-emerald-500 text-white' : toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-primary text-white']">{{ toast.message }}</div>
+        <div v-for="toast in toasts" :key="toast.id" :class="['px-4 py-3 rounded-lg shadow-lg font-medium text-sm', toast.type === 'success' ? 'bg-emerald-500 text-white' : toast.type === 'error' ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground']">{{ toast.message }}</div>
     </div>
 
     <div class="space-y-6">
         <!-- Header -->
         <div>
-            <div class="flex items-center gap-2 mb-4">
-                <router-link to="/dashboard/system" class="text-slate-500 text-sm hover:text-primary">System Tools</router-link>
-                <span class="text-slate-400">/</span>
-                <span class="text-[#0d131b] dark:text-white text-sm font-medium">Error Logs</span>
-            </div>
+            <AppBreadcrumb
+                class="mb-4"
+                :items="[
+                    { label: 'System Tools', icon: Settings, onClick: () => router.push('/dashboard/system') },
+                    { label: 'Error Logs', current: true }
+                ]"
+            />
             <div class="flex justify-between items-end">
                 <div>
-                    <h2 class="text-[#0d131b] dark:text-white text-3xl font-black leading-tight tracking-tight">Error Logs</h2>
-                    <p class="text-slate-500 dark:text-slate-400 text-base mt-2">Inspect Apache and PHP error logs in real-time for debugging.</p>
+                    <h2 class="text-foreground text-3xl font-black leading-tight tracking-tight">Error Logs</h2>
+                    <p class="text-muted-foreground text-base mt-2">Inspect Apache and PHP error logs in real-time for debugging.</p>
                 </div>
                 <div class="flex gap-2">
-                    <button @click="refreshLogs" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                        <RefreshCw :size="16" /> Refresh
-                    </button>
-                    <button @click="downloadLogs" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                        <Download :size="16" /> Export
-                    </button>
-                    <button @click="clearLogs" class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 transition-colors">
-                        <Trash2 :size="16" /> Clear Logs
-                    </button>
+                    <Button variant="outline" @click="refreshLogs">
+                        <RefreshCw :size="16" class="mr-2" /> Refresh
+                    </Button>
+                    <Button variant="outline" @click="downloadLogs">
+                        <Download :size="16" class="mr-2" /> Export
+                    </Button>
+                    <Button variant="destructive" @click="clearLogs">
+                        <Trash2 :size="16" class="mr-2" /> Clear Logs
+                    </Button>
                 </div>
             </div>
         </div>
 
         <!-- Filters -->
-        <div class="flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
-            <div class="flex items-center gap-4">
-                <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                    <button @click="activeFilter = 'all'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'all' ? 'bg-white dark:bg-slate-700 shadow-sm' : 'text-slate-500 hover:text-slate-700']">All</button>
-                    <button @click="activeFilter = 'error'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'error' ? 'bg-red-500/20 text-red-500' : 'text-slate-500 hover:text-slate-700']">Errors</button>
-                    <button @click="activeFilter = 'warning'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'warning' ? 'bg-amber-500/20 text-amber-500' : 'text-slate-500 hover:text-slate-700']">Warnings</button>
-                    <button @click="activeFilter = 'info'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'info' ? 'bg-blue-500/20 text-blue-500' : 'text-slate-500 hover:text-slate-700']">Info</button>
+        <Card class="rounded-xl">
+            <CardContent class="p-4 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="flex bg-muted p-1 rounded-lg">
+                        <button @click="activeFilter = 'all'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'all' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground']">All</button>
+                        <button @click="activeFilter = 'error'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'error' ? 'bg-destructive/20 text-destructive' : 'text-muted-foreground hover:text-foreground']">Errors</button>
+                        <button @click="activeFilter = 'warning'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'warning' ? 'bg-amber-500/20 text-amber-500' : 'text-muted-foreground hover:text-foreground']">Warnings</button>
+                        <button @click="activeFilter = 'info'" :class="['px-3 py-1.5 rounded-md text-xs font-bold transition-colors', activeFilter === 'info' ? 'bg-blue-500/20 text-blue-500' : 'text-muted-foreground hover:text-foreground']">Info</button>
+                    </div>
+                    <span class="text-xs text-muted-foreground">{{ filteredLogs.length }} logs found</span>
                 </div>
-                <span class="text-xs text-slate-500">{{ filteredLogs.length }} logs found</span>
-            </div>
-            <div class="relative">
-                <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input v-model="searchQuery" class="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm w-64 focus:ring-1 focus:ring-primary" placeholder="Search logs..." type="text" />
-            </div>
-        </div>
+                <div class="relative">
+                    <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input v-model="searchQuery" class="pl-9 w-64" placeholder="Search logs..." />
+                </div>
+            </CardContent>
+        </Card>
 
         <!-- Log Viewer -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+        <Card class="rounded-xl overflow-hidden">
             <div v-if="isLoading" class="p-12 text-center">
                 <div class="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p class="text-slate-500">Loading logs...</p>
+                <p class="text-muted-foreground">Loading logs...</p>
             </div>
 
             <div v-else-if="filteredLogs.length === 0" class="p-12 text-center">
-                <AlertCircle :size="48" class="mx-auto mb-4 text-slate-300" />
-                <p class="text-slate-500">No error logs found</p>
+                <AlertCircle :size="48" class="mx-auto mb-4 text-muted-foreground/50" />
+                <p class="text-muted-foreground">No error logs found</p>
             </div>
 
-            <div v-else class="divide-y divide-slate-100 dark:divide-slate-800 max-h-[600px] overflow-y-auto">
-                <div v-for="log in filteredLogs" :key="log.id" class="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+            <div v-else class="divide-y divide-border max-h-[600px] overflow-y-auto">
+                <div v-for="log in filteredLogs" :key="log.id" class="p-4 hover:bg-muted/30 transition-colors">
                     <div class="flex items-start gap-4">
-                        <span :class="['px-2 py-1 rounded text-[10px] font-bold uppercase shrink-0', getLevelClass(log.level)]">{{ getLevelLabel(log.level) }}</span>
+                        <Badge :variant="getLevelVariant(log.level)" class="shrink-0">{{ getLevelLabel(log.level) }}</Badge>
                         <div class="flex-1 min-w-0">
-                            <p class="text-sm font-mono text-[#0d131b] dark:text-white break-all">{{ log.message }}</p>
-                            <p class="text-xs text-slate-400 mt-1">{{ log.timestamp }}</p>
+                            <p class="text-sm font-mono text-foreground break-all">{{ log.message }}</p>
+                            <p class="text-xs text-muted-foreground mt-1">{{ log.timestamp }}</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div v-if="filteredLogs.length > 0" class="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/50">
+            <div v-if="filteredLogs.length > 0" class="px-4 py-3 border-t border-border flex justify-between items-center text-xs text-muted-foreground bg-muted/30">
                 <span class="flex items-center gap-2">
                     <span class="size-2 rounded-full bg-emerald-500 animate-pulse"></span>
                     Live monitoring active
                 </span>
                 <span>Last updated: {{ new Date().toLocaleTimeString() }}</span>
             </div>
-        </div>
+        </Card>
     </div>
 </MainLayout>
 </template>

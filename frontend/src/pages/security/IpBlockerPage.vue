@@ -1,29 +1,24 @@
 <script setup lang="ts">
 /**
  * IpBlockerPage - IP Blocker Management
- * 
- * Features:
- * - Add IP/Range form with reason selector
- * - Blocked IPs table with search
- * - Unblock functionality
- * - Pagination
  */
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import AppBreadcrumb from '@/components/AppBreadcrumb.vue'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button, Input } from '@/components/ui'
+import { Badge } from '@/components/ui/badge'
 import { securityService } from '@/services'
-import { 
-    Shield, Search, Download, Ban, Globe, Network,
-    ChevronRight
-} from 'lucide-vue-next'
+import { Shield, Search, Download, Ban, Globe, Network } from 'lucide-vue-next'
 
-// State
+const router = useRouter()
 const blockedIps = ref<any[]>([])
 const isLoading = ref(true)
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = 10
 
-// Form state
 const newIpAddress = ref('')
 const newBlockReason = ref('Brute Force Attempt')
 const isSubmitting = ref(false)
@@ -37,10 +32,8 @@ const blockReasons = [
 ]
 
 import { useToastStore } from '@/stores/toast'
-
 const toast = useToastStore()
 
-// Computed
 const filteredIps = computed(() => {
     if (!searchQuery.value) return blockedIps.value
     const q = searchQuery.value.toLowerCase()
@@ -57,15 +50,12 @@ const paginatedIps = computed(() => {
 
 const totalPages = computed(() => Math.ceil(filteredIps.value.length / itemsPerPage))
 
-// Methods
 const fetchData = async () => {
     isLoading.value = true
     try {
         const res = await securityService.getBlockedIps()
         blockedIps.value = res.data.data || []
     } catch (e) {
-        console.error('Failed to load blocked IPs:', e)
-        console.error('Failed to load blocked IPs:', e)
         toast.error('Failed to load blocked IPs')
     } finally {
         isLoading.value = false
@@ -104,12 +94,11 @@ const unblockIp = async (id: string) => {
     }
 }
 
-const getReasonColor = (reason: string) => {
+const getReasonVariant = (reason: string): 'destructive' | 'warning' | 'secondary' => {
     const r = reason?.toLowerCase() || ''
-    if (r.includes('brute') || r.includes('ddos')) return 'bg-error/10 text-error'
-    if (r.includes('spam') || r.includes('malicious')) return 'bg-error/10 text-error'
-    if (r.includes('unauthorized')) return 'bg-warning/10 text-warning'
-    return 'bg-error/10 text-error'
+    if (r.includes('brute') || r.includes('ddos') || r.includes('spam') || r.includes('malicious')) return 'destructive'
+    if (r.includes('unauthorized')) return 'warning'
+    return 'destructive'
 }
 
 const getCountryFlag = (country: string) => {
@@ -125,157 +114,127 @@ onMounted(fetchData)
 </script>
 
 <template>
-    <MainLayout>
+<MainLayout>
+    <div class="space-y-8">
+        <!-- Header -->
+        <div>
+            <AppBreadcrumb
+                class="mb-4"
+                :items="[
+                    { label: 'Security Center', icon: Shield, onClick: () => router.push('/dashboard/security') },
+                    { label: 'IP Blocker', current: true }
+                ]"
+            />
+            <h2 class="text-3xl font-black leading-tight tracking-tight text-foreground flex items-center gap-3">
+                <Ban :size="32" class="text-primary" />
+                IP Blocker
+            </h2>
+        </div>
 
+        <!-- Add IP Form -->
+        <Card class="rounded-xl">
+            <CardHeader>
+                <CardTitle>Add an IP Address or Range</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                    <div class="flex flex-col gap-2">
+                        <label class="text-xs font-bold text-muted-foreground uppercase tracking-wider">IP Address or Range</label>
+                        <Input v-model="newIpAddress" placeholder="e.g. 192.168.0.1 or 10.0.0.0/24" />
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="text-xs font-bold text-muted-foreground uppercase tracking-wider">Reason for Block</label>
+                        <select v-model="newBlockReason" class="w-full appearance-none px-4 py-2 bg-muted border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm">
+                            <option v-for="reason in blockReasons" :key="reason" :value="reason">{{ reason }}</option>
+                        </select>
+                    </div>
+                    <Button @click="blockIp" :disabled="isSubmitting" class="w-full">
+                        <Shield :size="18" class="mr-2" /> Block IP
+                    </Button>
+                </div>
+                <p class="mt-4 text-xs text-muted-foreground">You can specify an individual IP address (192.168.0.1) or a range in CIDR format (192.168.0.1/24).</p>
+            </CardContent>
+        </Card>
 
-        <div class="space-y-8">
-            <!-- Page Header -->
-            <div class="flex flex-wrap justify-between items-center gap-4">
-                <div class="flex flex-col gap-2">
-                    <nav class="flex items-center gap-2 text-xs font-medium text-slate-400 mb-1">
-                        <router-link to="/dashboard/security" class="hover:text-primary transition-colors">Security Center</router-link>
-                        <ChevronRight :size="12" />
-                        <span class="text-slate-600 dark:text-slate-300">IP Blocker</span>
-                    </nav>
-                    <h2 class="text-3xl font-black leading-tight tracking-tight text-[#0d131b] dark:text-white flex items-center gap-3">
-                        <Ban :size="32" class="text-primary" />
-                        IP Blocker
-                    </h2>
+        <!-- Blocked IPs Table -->
+        <section>
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h3 class="text-[22px] font-bold leading-tight tracking-tight text-foreground">Currently Blocked IPs</h3>
+                    <p class="text-xs text-muted-foreground mt-1">There are {{ blockedIps.length }} active blocks currently enforced.</p>
+                </div>
+                <div class="flex gap-2">
+                    <div class="relative">
+                        <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <Input v-model="searchQuery" class="pl-10 w-64" placeholder="Search blocked list..." />
+                    </div>
+                    <Button variant="outline" size="icon">
+                        <Download :size="18" />
+                    </Button>
                 </div>
             </div>
 
-            <!-- Add IP Form Section -->
-            <section>
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm">
-                    <h3 class="text-xl font-bold mb-6">Add an IP Address or Range</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                        <div class="flex flex-col gap-2">
-                            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">IP Address or Range</label>
-                            <input v-model="newIpAddress" type="text" 
-                                placeholder="e.g. 192.168.0.1 or 10.0.0.0/24"
-                                class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm outline-none" />
-                        </div>
-                        <div class="flex flex-col gap-2">
-                            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Reason for Block</label>
-                            <div class="relative">
-                                <select v-model="newBlockReason"
-                                    class="w-full appearance-none px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm outline-none cursor-pointer">
-                                    <option v-for="reason in blockReasons" :key="reason" :value="reason">{{ reason }}</option>
-                                </select>
-                                <ChevronRight :size="16" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" />
-                            </div>
-                        </div>
-                        <button @click="blockIp" :disabled="isSubmitting"
-                            class="w-full py-3 bg-primary text-white hover:bg-primary/90 rounded-lg text-sm font-bold transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50">
-                            <Shield :size="18" />
-                            Block IP
-                        </button>
-                    </div>
-                    <p class="mt-4 text-xs text-slate-400">You can specify an individual IP address (192.168.0.1) or a range in CIDR format (192.168.0.1/24).</p>
-                </div>
-            </section>
-
-            <!-- Blocked IPs Table -->
-            <section>
-                <div class="flex items-center justify-between mb-6">
-                    <div class="flex flex-col">
-                        <h3 class="text-[22px] font-bold leading-tight tracking-tight">Currently Blocked IPs</h3>
-                        <p class="text-xs text-slate-500 mt-1">There are {{ blockedIps.length }} active blocks currently enforced.</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <div class="relative">
-                            <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input v-model="searchQuery" type="text" placeholder="Search blocked list..."
-                                class="pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs focus:ring-primary focus:border-primary w-64" />
-                        </div>
-                        <button class="p-2 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                            <Download :size="18" class="text-slate-500" />
-                        </button>
-                    </div>
+            <Card class="rounded-xl overflow-hidden">
+                <!-- Loading -->
+                <div v-if="isLoading" class="p-12 text-center">
+                    <div class="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p class="text-muted-foreground">Loading blocked IPs...</p>
                 </div>
 
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                    <!-- Loading State -->
-                    <div v-if="isLoading" class="p-12 text-center">
-                        <div class="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                        <p class="text-slate-500">Loading blocked IPs...</p>
-                    </div>
-
-                    <!-- Empty State -->
-                    <div v-else-if="filteredIps.length === 0" class="p-12 text-center">
-                        <Shield :size="48" class="mx-auto mb-4 text-slate-300" />
-                        <p class="text-slate-500">No blocked IPs found</p>
-                    </div>
-
-                    <!-- Table -->
-                    <template v-else>
-                        <table class="w-full text-left">
-                            <thead>
-                                <tr class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">IP / Range</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Country</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Reason</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Date Added</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                                <tr v-for="ip in paginatedIps" :key="ip.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center gap-2">
-                                            <component :is="ip.ip_address?.includes('/') ? Network : Globe" :size="18" class="text-slate-400" />
-                                            <span class="text-sm font-bold font-mono">{{ ip.ip_address }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-lg">{{ getCountryFlag(ip.country || 'US') }}</span>
-                                            <span class="text-sm">{{ ip.country_name || 'Unknown' }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4 text-sm">
-                                        <span :class="['px-2 py-1 rounded text-[10px] font-bold uppercase', getReasonColor(ip.reason)]">
-                                            {{ ip.reason || 'Manual Block' }}
-                                        </span>
-                                    </td>
-                                    <td class="px-6 py-4 text-sm text-slate-500">{{ ip.created_at?.split('T')[0] || 'Unknown' }}</td>
-                                    <td class="px-6 py-4 text-right">
-                                        <button @click="unblockIp(ip.id)"
-                                            class="px-3 py-1.5 border border-slate-200 dark:border-slate-700 hover:border-primary hover:text-primary rounded text-xs font-bold transition-all">
-                                            Unblock
-                                        </button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-
-                        <!-- Pagination -->
-                        <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                            <p class="text-xs text-slate-500">Showing {{ paginatedIps.length }} of {{ filteredIps.length }} blocked entries</p>
-                            <div class="flex gap-2">
-                                <button @click="currentPage--" :disabled="currentPage === 1"
-                                    class="px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                    Previous
-                                </button>
-                                <button @click="currentPage++" :disabled="currentPage >= totalPages"
-                                    class="px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                    Next
-                                </button>
-                            </div>
-                        </div>
-                    </template>
+                <!-- Empty -->
+                <div v-else-if="filteredIps.length === 0" class="p-12 text-center">
+                    <Shield :size="48" class="mx-auto mb-4 text-muted-foreground/50" />
+                    <p class="text-muted-foreground">No blocked IPs found</p>
                 </div>
-            </section>
-        </div>
-    </MainLayout>
+
+                <!-- Table -->
+                <template v-else>
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-muted/50 border-b border-border">
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">IP / Range</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Country</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Reason</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">Date Added</th>
+                                <th class="px-6 py-4 text-xs font-bold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <tr v-for="ip in paginatedIps" :key="ip.id" class="hover:bg-muted/30 transition-colors">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-2">
+                                        <component :is="ip.ip_address?.includes('/') ? Network : Globe" :size="18" class="text-muted-foreground" />
+                                        <span class="text-sm font-bold font-mono text-foreground">{{ ip.ip_address }}</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-lg">{{ getCountryFlag(ip.country || 'US') }}</span>
+                                        <span class="text-sm">{{ ip.country_name || 'Unknown' }}</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <Badge :variant="getReasonVariant(ip.reason)">{{ ip.reason || 'Manual Block' }}</Badge>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-muted-foreground">{{ ip.created_at?.split('T')[0] || 'Unknown' }}</td>
+                                <td class="px-6 py-4 text-right">
+                                    <Button variant="outline" size="sm" @click="unblockIp(ip.id)">Unblock</Button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Pagination -->
+                    <div class="px-6 py-4 border-t border-border flex items-center justify-between">
+                        <p class="text-xs text-muted-foreground">Showing {{ paginatedIps.length }} of {{ filteredIps.length }} blocked entries</p>
+                        <div class="flex gap-2">
+                            <Button variant="outline" size="sm" @click="currentPage--" :disabled="currentPage === 1">Previous</Button>
+                            <Button variant="outline" size="sm" @click="currentPage++" :disabled="currentPage >= totalPages">Next</Button>
+                        </div>
+                    </div>
+                </template>
+            </Card>
+        </section>
+    </div>
+</MainLayout>
 </template>
-
-<style scoped>
-.fade-enter-active, .fade-leave-active {
-    transition: opacity 0.3s ease, transform 0.3s ease;
-}
-.fade-enter-from, .fade-leave-to {
-    opacity: 0;
-    transform: translateY(-10px);
-}
-</style>
