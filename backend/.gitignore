@@ -42,3 +42,7 @@ coverage/
 /data/
 /uploads/
 /backups/
+
+# AI Rules & Deploy
+deploy.sh
+AI_RULES_BACKEND.md

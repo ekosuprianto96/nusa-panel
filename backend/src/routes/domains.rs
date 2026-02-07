@@ -9,12 +9,12 @@ use serde::Deserialize;
 
 use crate::database::Database;
 use crate::errors::ApiResult;
-use crate::guards::{AuthenticatedUser, ResellerOrAdmin};
+use crate::guards::{AuthenticatedUser, ResellerOrAdmin, RequestInfo};
 use crate::models::{
     CreateDnsRecordRequest, CreateDomainRequest, CreateSubdomainRequest, DnsRecordResponse,
     DomainResponse, SubdomainResponse, UpdateDnsRecordRequest, UpdateDomainRequest,
     CreateRedirectRequest, CreateAliasRequest, DomainAlias, Redirect,
-    UpdateDomainStatusRequest,
+    UpdateDomainStatusRequest, CreateDdnsHostRequest, DdnsHostResponse, DdnsHostCreateResponse, DdnsUpdateRequest,
 };
 use crate::services::DomainService;
 use crate::utils::response::{paginated, success, success_message, ApiResponse, PaginatedResponse};
@@ -459,6 +459,63 @@ pub async fn delete_alias(
     Ok(success_message("Alias berhasil dihapus"))
 }
 
+// ==========================================
+// DDNS HOSTS ENDPOINTS
+// ==========================================
+
+/// List DDNS hosts for a domain
+#[get("/<domain_id>/ddns")]
+pub async fn list_ddns_hosts(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+) -> ApiResult<Json<ApiResponse<Vec<DdnsHostResponse>>>> {
+    let hosts = DomainService::get_ddns_hosts(db.get_pool(), domain_id, &user.id).await?;
+    Ok(success(hosts))
+}
+
+/// Create DDNS host
+#[post("/<domain_id>/ddns", format = "json", data = "<request>")]
+pub async fn create_ddns_host(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+    request: Json<CreateDdnsHostRequest>,
+) -> ApiResult<Json<ApiResponse<DdnsHostCreateResponse>>> {
+    let host =
+        DomainService::create_ddns_host(db.get_pool(), domain_id, &user.id, request.into_inner())
+            .await?;
+    Ok(success(host))
+}
+
+/// Delete DDNS host
+#[delete("/<domain_id>/ddns/<ddns_id>")]
+pub async fn delete_ddns_host(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    domain_id: &str,
+    ddns_id: &str,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    DomainService::delete_ddns_host(db.get_pool(), domain_id, ddns_id, &user.id).await?;
+    Ok(success_message("DDNS host berhasil dihapus"))
+}
+
+/// Update DDNS host (client update)
+#[post("/ddns/update", format = "json", data = "<request>")]
+pub async fn update_ddns_host(
+    db: &State<Database>,
+    req_info: RequestInfo,
+    request: Json<DdnsUpdateRequest>,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    DomainService::update_ddns_host_ip(
+        db.get_pool(),
+        request.into_inner(),
+        req_info.ip_address,
+    )
+    .await?;
+    Ok(success_message("DDNS updated"))
+}
+
 /// Mendapatkan routes untuk domains
 pub fn domain_routes() -> Vec<Route> {
     routes![
@@ -486,6 +543,11 @@ pub fn domain_routes() -> Vec<Route> {
         // Aliases
         list_aliases,
         create_alias,
-        delete_alias
+        delete_alias,
+        // DDNS
+        list_ddns_hosts,
+        create_ddns_host,
+        delete_ddns_host,
+        update_ddns_host
     ]
 }

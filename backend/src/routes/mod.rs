@@ -18,6 +18,7 @@ pub mod security;
 pub mod system;
 pub mod users;
 pub mod web_server;
+pub mod vuefinder;
 
 use rocket::catch;
 
@@ -37,6 +38,7 @@ pub use security::*;
 pub use system::*;
 pub use users::*;
 pub use web_server::*;
+pub use vuefinder::*;
 
 #[catch(403)]
 pub fn forbidden_catcher() -> rocket::serde::json::Value {

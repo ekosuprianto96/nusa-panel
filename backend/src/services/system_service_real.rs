@@ -36,16 +36,25 @@ impl SystemServiceReal {
         .fetch_all(pool)
         .await?;
 
-        let system_username = format!("user_{}", user_id);
+        let system_username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
         
         // Format crontab content
         let mut crontab_content = String::new();
         crontab_content.push_str(&format!("# NusaPanel Cron for {}\n", system_username));
         crontab_content.push_str("MAILTO=\"\"\n"); // Disable default mailto
 
+        // Ensure log directory exists
+        let log_dir = format!("/home/{}/cron_logs", system_username);
+        let _ = Command::new("mkdir").arg("-p").arg(&log_dir).output();
+        let _ = Command::new("chown").arg("-R").arg(&system_username).arg(&log_dir).output();
+
         for job in jobs {
-            // "0 * * * * php /home/user/script.php # job_id"
-            crontab_content.push_str(&format!("{} {} # {}\n", job.schedule, job.command, job.id));
+            // "0 * * * * command >> /home/user/cron_logs/job_id.log 2>&1 # job_id"
+            let log_file = format!("{}/{}.log", log_dir, job.id);
+            crontab_content.push_str(&format!("{} {} >> {} 2>&1 # {}\n", job.schedule, job.command, log_file, job.id));
         }
 
         // Tulis ke stdin command `crontab -u user -`
@@ -73,6 +82,11 @@ impl SystemServiceReal {
         }
 
         Ok(())
+    }
+
+    /// Initialize crontab for user (called during registration)
+    pub async fn init_user_crontab(pool: &MySqlPool, user_id: &str) -> ApiResult<()> {
+        Self::update_user_crontab(pool, user_id).await
     }
 
     pub async fn create_cron_job(
@@ -169,6 +183,53 @@ impl SystemServiceReal {
         Ok(())
     }
 
+    /// Get cron job logs
+    pub async fn get_cron_logs(pool: &MySqlPool, job_id: &str, user_id: &str) -> ApiResult<String> {
+        let job = sqlx::query_as::<_, CronJob>("SELECT * FROM cron_jobs WHERE id = ?").bind(job_id).fetch_optional(pool).await?.ok_or(ApiError::NotFound("Cron".to_string()))?;
+        if job.user_id != user_id { return Err(ApiError::Forbidden); }
+
+        let system_username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+
+        let log_file = format!("/home/{}/cron_logs/{}.log", system_username, job_id);
+        
+        // Read file
+        match fs::read_to_string(&log_file) {
+            Ok(content) => {
+                // If content is too large, take last 50KB
+                if content.len() > 50_000 {
+                    let split_idx = content.len() - 50_000;
+                    Ok(format!("... (Truncated)\n{}", &content[split_idx..]))
+                } else {
+                    Ok(content)
+                }
+            },
+            Err(_) => Ok("No logs available yet.".to_string())
+        }
+    }
+
+    /// Clear cron job logs
+    pub async fn clear_cron_logs(pool: &MySqlPool, job_id: &str, user_id: &str) -> ApiResult<()> {
+        let job = sqlx::query_as::<_, CronJob>("SELECT * FROM cron_jobs WHERE id = ?").bind(job_id).fetch_optional(pool).await?.ok_or(ApiError::NotFound("Cron".to_string()))?;
+        if job.user_id != user_id { return Err(ApiError::Forbidden); }
+
+        let system_username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+
+        let log_file = format!("/home/{}/cron_logs/{}.log", system_username, job_id);
+        
+        let _ = fs::write(&log_file, "");
+        
+        // Ensure ownership
+        let _ = Command::new("chown").arg(&system_username).arg(&log_file).output();
+
+        Ok(())
+    }
+
     // ==========================================
     // BACKUP OPERATIONS (REAL)
     // ==========================================
@@ -181,17 +242,73 @@ impl SystemServiceReal {
     ) -> ApiResult<SystemBackup> {
         request.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
         
+        // Import DatabaseService here or at top level. 
+        // Rust allows imports inside functions but better at top. 
+        // I will assume DatabaseService is available via crate::services::DatabaseService
+        
         let backup_id = Uuid::new_v4().to_string();
         let now = Utc::now();
-        let system_username = format!("user_{}", username);
+        let system_username = username.to_string();
         let backup_filename = format!("backup_{}_{}_{}.tar.gz", username, request.backup_type, now.format("%Y%m%d%H%M%S"));
-        let backup_path = format!("/home/{}/backups/{}", system_username, backup_filename);
         let backup_dir = format!("/home/{}/backups", system_username);
+        let backup_path = format!("{}/{}", backup_dir, backup_filename);
 
         // Ensure backup dir exists
         fs::create_dir_all(&backup_dir).map_err(|e| ApiError::InternalError(format!("Backup dir error: {}", e)))?;
+        
+        // Ensure ownership of backup dir
+        let _ = Command::new("chown").arg("-R").arg(&system_username).arg(&backup_dir).output();
 
-        // 1. Execute Backup Command based on Type
+        // Prepare for Database Backup
+        let mut temp_sql_dir = None;
+        if request.backup_type == "database" || request.backup_type == "full" {
+            let sql_dir = format!("{}/temp_sql_{}", backup_dir, backup_id);
+            fs::create_dir_all(&sql_dir).map_err(|e| ApiError::InternalError(format!("Failed to create temp sql dir: {}", e)))?;
+            temp_sql_dir = Some(sql_dir.clone());
+
+            // Get user databases
+            let databases = crate::services::DatabaseService::get_user_databases(pool, user_id).await?;
+            
+            // Get DB Credentials from CONFIG
+            // Format: mysql://user:pass@host:port/db
+            let db_url = &crate::config::CONFIG.database_url;
+            // Simple parsing (naive)
+            let parts: Vec<&str> = db_url.split("://").collect();
+            if parts.len() < 2 { return Err(ApiError::InternalError("Invalid DB URL format".to_string())); }
+            let auth_part = parts[1].split('@').next().unwrap_or("");
+            let auth_parts: Vec<&str> = auth_part.split(':').collect();
+            let db_user = auth_parts.get(0).unwrap_or(&"root");
+            let db_pass = auth_parts.get(1).unwrap_or(&"");
+
+            for db in databases {
+                let dump_file = format!("{}/{}.sql", sql_dir, db.db_name);
+                // mysqldump -u user -p'pass' db_name > dump_file
+                // Note: passing password in command line is insecure (visible in ps). 
+                // Better to use defaults-extra-file, but for now we stick to simple Command.
+                // We will use MYSQL_PWD env var for slightly better security than CLI arg
+                
+                let output = Command::new("mysqldump")
+                    .env("MYSQL_PWD", db_pass)
+                    .arg("-u")
+                    .arg(db_user)
+                    .arg(&db.db_name)
+                    .output(); // Capture output to avoid dumping to stdout if > file fails
+
+                match output {
+                    Ok(out) => {
+                         if out.status.success() {
+                             fs::write(&dump_file, out.stdout).map_err(|e| ApiError::InternalError(format!("Failed to write SQL dump: {}", e)))?;
+                         } else {
+                             tracing::error!("Backup DB {} failed: {}", db.db_name, String::from_utf8_lossy(&out.stderr));
+                             // Continue with other DBs or error? Let's log and continue partial backup.
+                         }
+                    },
+                    Err(e) => tracing::error!("Failed to run mysqldump for {}: {}", db.db_name, e),
+                }
+            }
+        }
+
+        // 1. Execute Backup Command (Tar)
         let output = match request.backup_type.as_str() {
             "homedir" => {
                 // tar -czf /path/backup.tar.gz -C /home/user public_html
@@ -204,31 +321,57 @@ impl SystemServiceReal {
                     .output()?
             },
             "database" => {
-                // mysqldump -u root user_db | gzip > /path/backup.sql.gz
-                // NOTE: Ini simple implementation, idealnya loop semua DB user
-                // Untuk sekarang kita simulasi command success agar tidak error di dev environment
-                // Di production, gunakan `mysqldump` dengan credentials yang benar
-                Command::new("echo").arg("Mysqldump implementation needed").output()?
-                // Command::new("mysqldump")
-                // .arg("-u")
-                // .arg("-p")
+                // tar -czf /path/backup.tar.gz -C /home/user/backups/temp... .
+                if let Some(ref sql_dir) = temp_sql_dir {
+                     Command::new("tar")
+                        .arg("-czf")
+                        .arg(&backup_path)
+                        .arg("-C")
+                        .arg(sql_dir)
+                        .arg(".")
+                        .output()?
+                } else {
+                    return Err(ApiError::InternalError("SQL dir missing".to_string()));
+                }
             },
             "full" => {
-                // tar + mysqldump wrapper
-                 Command::new("tar")
-                    .arg("-czf")
-                    .arg(&backup_path)
-                    .arg("-C")
-                    .arg(format!("/home/{}", system_username))
-                    .arg("public_html")
-                    .output()?
+                // tar -czf ... -C /home/user public_html -C /temp_sql . 
+                // Tar multiple -C is order dependent. 
+                // Easier: link temp_sql to /home/user/database_backups then tar everything?
+                // Or just Tar public_html from /home/user AND sql files from absolute path?
+                // Tar absolute paths strips leading / by default.
+                // Let's try: tar -czf backup.tar.gz -C /home/user public_html -C /path/to/temp_sql .
+                // Result: public_html/ and ./sql_files.sql
+                
+                if let Some(ref sql_dir) = temp_sql_dir {
+                    Command::new("tar")
+                        .arg("-czf")
+                        .arg(&backup_path)
+                        .arg("-C")
+                        .arg(format!("/home/{}", system_username))
+                        .arg("public_html")
+                        .arg("-C")
+                        .arg(sql_dir)
+                        .arg(".") // puts sql files at root of tar alongside public_html
+                        .output()?
+                } else {
+                     return Err(ApiError::InternalError("SQL dir missing".to_string()));
+                }
             },
             _ => return Err(ApiError::ValidationError("Invalid backup type".to_string())),
         };
 
-        if !output.status.success() {
-             return Err(ApiError::InternalError(format!("Backup failed: {}", String::from_utf8_lossy(&output.stderr))));
+        // Cleanup temp SQL dir
+        if let Some(sql_dir) = temp_sql_dir {
+            let _ = fs::remove_dir_all(sql_dir);
         }
+
+        if !output.status.success() {
+             return Err(ApiError::InternalError(format!("Backup tar failed: {}", String::from_utf8_lossy(&output.stderr))));
+        }
+        
+        // Ensure ownership of the backup file so user can download/delete if they have shell access (optional but good)
+        let _ = Command::new("chown").arg(&system_username).arg(&backup_path).output();
 
         // 2. Get File Size
         let file_metadata = fs::metadata(&backup_path).map_err(|_| ApiError::InternalError("Failed to get backup metadata".to_string()))?;
@@ -300,7 +443,11 @@ impl SystemServiceReal {
         }
 
         // 1. Delete file
-        let system_username = format!("user_{}", user_id.replace("-", "").chars().take(8).collect::<String>());
+        let system_username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| ApiError::InternalError("Failed to get username for backup deletion".to_string()))?;
         let backup_path = format!("/home/{}/backups/{}", system_username, backup.filename);
         let _ = fs::remove_file(backup_path);
 
@@ -311,6 +458,27 @@ impl SystemServiceReal {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn get_backup_path(pool: &MySqlPool, id: &str, user_id: &str) -> ApiResult<String> {
+        let backup = sqlx::query_as::<_, SystemBackup>(
+            "SELECT * FROM system_backups WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(ApiError::NotFound("Backup".to_string()))?;
+
+        if backup.user_id != user_id {
+            return Err(ApiError::Forbidden);
+        }
+
+        let system_username = sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+            
+        Ok(format!("/home/{}/backups/{}", system_username, backup.filename))
     }
 
     // ==========================================

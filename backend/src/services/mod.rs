@@ -23,6 +23,7 @@ pub mod user_service;
 pub mod user_service_real;
 pub mod web_server_service;
 pub mod web_server_service_real;
+pub mod vuefinder_service_real;
 
 pub use app_installer_service::*;
 pub use auth_service::*;
@@ -41,3 +42,4 @@ pub use system_service_real::SystemServiceReal as SystemService;
 pub use user_service_real::UserServiceReal as UserService;
 pub use web_server_service_real::WebServerServiceReal as WebServerService;
 pub use package_service::PackageService;
+pub use vuefinder_service_real::VueFinderService;

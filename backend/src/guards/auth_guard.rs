@@ -9,6 +9,8 @@ use rocket::request::{FromRequest, Outcome, Request};
 use crate::errors::ApiError;
 use crate::utils::jwt::{extract_token_from_header, validate_access_token, Claims};
 
+const ACCESS_TOKEN_COOKIE: &str = "access_token";
+
 /// Authenticated user dari JWT token
 ///
 /// Guard ini digunakan untuk route yang memerlukan autentikasi.
@@ -68,28 +70,39 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
         // Ambil Authorization header
         let auth_header = request.headers().get_one("Authorization");
 
-        match auth_header {
-            Some(header) => {
-                // Extract token dari "Bearer <token>"
-                match extract_token_from_header(header) {
-                    Some(token) => {
-                        // Validate token
-                        match validate_access_token(token) {
-                            Ok(claims) => Outcome::Success(AuthenticatedUser::from(claims)),
-                            Err(e) => {
-                                tracing::debug!("Token validation failed: {:?}", e);
-                                Outcome::Error((Status::Unauthorized, ApiError::InvalidToken))
-                            }
-                        }
-                    }
-                    None => {
-                        tracing::debug!("Invalid Authorization header format");
-                        Outcome::Error((Status::Unauthorized, ApiError::InvalidToken))
-                    }
+        // DEBUG: Print all cookies
+        let all_cookies: Vec<_> = request.cookies().iter().map(|c| c.name().to_string()).collect();
+        tracing::info!("DEBUG: Incoming Cookies: {:?}", all_cookies);
+        if let Some(c) = request.cookies().get(ACCESS_TOKEN_COOKIE) {
+             tracing::info!("DEBUG: Found access_token cookie: {}...", &c.value()[..10.min(c.value().len())]);
+        } else {
+             tracing::info!("DEBUG: access_token cookie NOT found in request");
+        }
+
+        let token = match auth_header {
+             Some(header) => match extract_token_from_header(header) {
+                Some(token) => Some(token.to_string()),
+                None => {
+                    tracing::debug!("Invalid Authorization header format");
+                    return Outcome::Error((Status::Unauthorized, ApiError::InvalidToken));
                 }
-            }
+            },
+            None => request
+                .cookies()
+                .get(ACCESS_TOKEN_COOKIE)
+                .map(|cookie| cookie.value().to_string()),
+        };
+
+        match token {
+            Some(token) => match validate_access_token(&token) {
+                Ok(claims) => Outcome::Success(AuthenticatedUser::from(claims)),
+                Err(e) => {
+                    tracing::debug!("Token validation failed: {:?}", e);
+                    Outcome::Error((Status::Unauthorized, ApiError::InvalidToken))
+                }
+            },
             None => {
-                tracing::debug!("Missing Authorization header");
+                tracing::debug!("Missing Authorization header and access token cookie");
                 Outcome::Error((Status::Unauthorized, ApiError::MissingToken))
             }
         }

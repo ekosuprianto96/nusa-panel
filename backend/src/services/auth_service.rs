@@ -16,6 +16,7 @@ use crate::utils::jwt::{create_token_pair, validate_refresh_token, TokenPair, To
 use crate::utils::password::{hash_password, validate_password_strength, verify_password};
 use crate::utils::system::update_system_password;
 use totp_rs::{Algorithm, Secret, TOTP};
+use crate::services::SystemService;
 
 /// Service untuk operasi authentication
 pub struct AuthService;
@@ -109,9 +110,13 @@ impl AuthService {
             // Non-blocking error, user is created in DB already
         }
 
+        // Initialize crontab for user
+        if let Err(e) = SystemService::init_user_crontab(pool, &user_id).await {
+            tracing::warn!("Failed to init crontab for user {}: {}", request.username, e);
+        }
+
         Ok(UserResponse::from(user))
     }
-
     /// Login user
     ///
     /// # Arguments

@@ -3,10 +3,12 @@
 //! Route handlers untuk System Tools (Cron, Backup, Services).
 
 use rocket::serde::json::Json;
+use rocket::fs::NamedFile;
 use rocket::{delete, get, post, put, routes, Route, State};
+use std::path::Path;
 
 use crate::database::Database;
-use crate::errors::ApiResult;
+use crate::errors::{ApiResult, ApiError};
 use crate::guards::{AuthenticatedUser};
 use crate::models::{
     CreateBackupRequest, CreateCronJobRequest, CronJob, ServiceStatus, SystemBackup,
@@ -79,6 +81,28 @@ pub async fn delete_cron_job(
     Ok(success_message("Cron job berhasil dihapus"))
 }
 
+/// Get cron job logs
+#[get("/cron/<id>/logs")]
+pub async fn get_cron_logs(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    id: &str,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let logs = SystemService::get_cron_logs(db.get_pool(), id, &user.id).await?;
+    Ok(success(logs))
+}
+
+/// Clear cron job logs
+#[delete("/cron/<id>/logs")]
+pub async fn clear_cron_logs(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    id: &str,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    SystemService::clear_cron_logs(db.get_pool(), id, &user.id).await?;
+    Ok(success_message("Log berhasil dibersihkan"))
+}
+
 // ==========================================
 // BACKUP ENDPOINTS
 // ==========================================
@@ -122,6 +146,18 @@ pub async fn delete_backup(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     SystemService::delete_backup(db.get_pool(), id, &user.id).await?;
     Ok(success_message("Backup berhasil dihapus"))
+}
+
+/// Download backup file
+#[get("/backups/<id>/download")]
+pub async fn download_backup(
+    db: &State<Database>,
+    user: AuthenticatedUser,
+    id: &str,
+) -> ApiResult<NamedFile> {
+    let path_str = SystemService::get_backup_path(db.get_pool(), id, &user.id).await?;
+    let path = Path::new(&path_str);
+    NamedFile::open(path).await.map_err(|_| ApiError::NotFound("File not found".to_string()))
 }
 
 // ==========================================
@@ -299,9 +335,12 @@ pub fn system_routes() -> Vec<Route> {
         create_cron_job,
         update_cron_job,
         delete_cron_job,
+        get_cron_logs,
+        clear_cron_logs,
         list_backups,
         create_backup,
         delete_backup,
+        download_backup,
         get_services_status,
         control_service,
         get_php_versions,

@@ -15,6 +15,7 @@ pub mod system;
 pub mod package;
 pub mod user;
 pub mod web_server;
+pub mod vuefinder;
 
 pub use package::*;
 pub use app_installer::*;
@@ -29,3 +30,4 @@ pub use security::*;
 pub use system::*;
 pub use user::*;
 pub use web_server::*;
+pub use vuefinder::*;

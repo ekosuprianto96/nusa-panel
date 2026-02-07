@@ -2,10 +2,13 @@
 //!
 //! Route handlers untuk authentication: register, login, logout, refresh token.
 
+use rocket::http::{Cookie, CookieJar, SameSite};
 use rocket::serde::json::Json;
+use rocket::time::Duration;
 use rocket::{get, post, routes, Route, State};
 
 
+use crate::config::AppConfig;
 use crate::database::Database;
 use crate::errors::ApiResult;
 use crate::guards::{AuthenticatedUser, RequestInfo};
@@ -16,6 +19,58 @@ use crate::services::AuthService;
 use crate::utils::jwt::{TokenPair, validate_access_token};
 use crate::utils::response::{success, success_message, ApiResponse};
 use crate::services::SecurityService;
+
+const ACCESS_TOKEN_COOKIE: &str = "access_token";
+const REFRESH_TOKEN_COOKIE: &str = "refresh_token";
+
+fn set_auth_cookies(cookies: &CookieJar<'_>, config: &AppConfig, tokens: &TokenPair) {
+    // FIXME: Forcing secure=false for debugging context where HTTPS might not be detected/used
+    let secure = false; // config.is_production();
+    let access_max_age = Duration::seconds(config.jwt.expiration as i64);
+    let refresh_max_age = Duration::seconds(config.jwt.refresh_expiration as i64);
+
+    let access_cookie = Cookie::build((ACCESS_TOKEN_COOKIE, tokens.access_token.clone()))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(secure)
+        .max_age(access_max_age)
+        .build();
+
+    let refresh_cookie = Cookie::build((REFRESH_TOKEN_COOKIE, tokens.refresh_token.clone()))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(secure)
+        .max_age(refresh_max_age)
+        .build();
+
+    cookies.add(access_cookie);
+    cookies.add(refresh_cookie);
+}
+
+fn clear_auth_cookies(cookies: &CookieJar<'_>, config: &AppConfig) {
+    let secure = config.is_production();
+
+    let access_cookie = Cookie::build((ACCESS_TOKEN_COOKIE, ""))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(secure)
+        .max_age(Duration::seconds(0))
+        .build();
+
+    let refresh_cookie = Cookie::build((REFRESH_TOKEN_COOKIE, ""))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(secure)
+        .max_age(Duration::seconds(0))
+        .build();
+
+    cookies.remove(access_cookie);
+    cookies.remove(refresh_cookie);
+}
 
 /// Register user baru
 ///
@@ -56,10 +111,13 @@ pub async fn register(
 #[post("/login", format = "json", data = "<request>")]
 pub async fn login(
     db: &State<Database>,
+    config: &State<AppConfig>,
+    cookies: &CookieJar<'_>,
     req_info: RequestInfo,
     request: Json<LoginRequest>,
 ) -> ApiResult<Json<ApiResponse<TokenPair>>> {
     let tokens = AuthService::login(db.get_pool(), request.into_inner()).await?;
+    set_auth_cookies(cookies, config, &tokens);
     if let Ok(claims) = validate_access_token(&tokens.access_token) {
         SecurityService::log_event(
             db.get_pool(),
@@ -90,9 +148,23 @@ pub async fn login(
 #[post("/refresh", format = "json", data = "<request>")]
 pub async fn refresh_token(
     db: &State<Database>,
-    request: Json<RefreshTokenRequest>,
+    config: &State<AppConfig>,
+    cookies: &CookieJar<'_>,
+    request: Option<Json<RefreshTokenRequest>>,
 ) -> ApiResult<Json<ApiResponse<TokenPair>>> {
-    let tokens = AuthService::refresh_token(db.get_pool(), request.into_inner()).await?;
+    let refresh_token = match request {
+        Some(body) => body.into_inner().refresh_token,
+        None => cookies
+            .get(REFRESH_TOKEN_COOKIE)
+            .map(|cookie| cookie.value().to_string())
+            .ok_or(crate::errors::ApiError::MissingToken)?,
+    };
+    let tokens = AuthService::refresh_token(
+        db.get_pool(),
+        RefreshTokenRequest { refresh_token },
+    )
+    .await?;
+    set_auth_cookies(cookies, config, &tokens);
     Ok(success(tokens))
 }
 
@@ -140,9 +212,14 @@ pub async fn change_password(
 /// Saat ini hanya mengembalikan pesan sukses karena JWT stateless.
 /// Untuk implementasi lengkap, token bisa disimpan di blacklist.
 #[post("/logout")]
-pub async fn logout(_user: AuthenticatedUser) -> Json<ApiResponse<()>> {
+pub async fn logout(
+    _user: AuthenticatedUser,
+    config: &State<AppConfig>,
+    cookies: &CookieJar<'_>,
+) -> Json<ApiResponse<()>> {
     // Note: Dalam implementasi produksi, token sebaiknya
     // ditambahkan ke blacklist untuk invalidasi
+    clear_auth_cookies(cookies, config);
     success_message("Logged out successfully")
 }
 

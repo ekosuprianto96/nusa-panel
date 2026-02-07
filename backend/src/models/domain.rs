@@ -366,6 +366,71 @@ pub struct DomainAlias {
     pub created_at: DateTime<Utc>,
 }
 
+/// DDNS Host entity
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct DdnsHost {
+    pub id: String,
+    pub user_id: String,
+    pub domain_id: String,
+    pub hostname: String,
+    pub description: Option<String>,
+    pub api_key: String,
+    pub last_ip: Option<String>,
+    pub last_updated_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// DDNS Host response (no api_key)
+#[derive(Debug, Clone, Serialize)]
+pub struct DdnsHostResponse {
+    pub id: String,
+    pub domain_id: String,
+    pub hostname: String,
+    pub description: Option<String>,
+    pub last_ip: Option<String>,
+    pub last_updated_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// DDNS Host create response (includes api_key)
+#[derive(Debug, Clone, Serialize)]
+pub struct DdnsHostCreateResponse {
+    pub id: String,
+    pub domain_id: String,
+    pub hostname: String,
+    pub description: Option<String>,
+    pub api_key: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// DTO untuk membuat DDNS host
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateDdnsHostRequest {
+    #[validate(length(min = 1, max = 63, message = "Hostname harus 1-63 karakter"))]
+    #[validate(regex(
+        path = "crate::models::domain::SUBDOMAIN_REGEX",
+        message = "Format hostname tidak valid"
+    ))]
+    pub hostname: String,
+
+    #[validate(length(max = 255, message = "Deskripsi maksimal 255 karakter"))]
+    pub description: Option<String>,
+}
+
+/// DTO untuk update DDNS (client update)
+#[derive(Debug, Deserialize, Validate)]
+pub struct DdnsUpdateRequest {
+    #[validate(length(min = 1, message = "ID tidak boleh kosong"))]
+    pub id: String,
+
+    #[validate(length(min = 8, message = "Key tidak valid"))]
+    pub key: String,
+
+    pub ip: Option<String>,
+}
+
 /// DTO untuk membuat alias
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateAliasRequest {

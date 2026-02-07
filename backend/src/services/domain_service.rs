@@ -5,7 +5,11 @@
 use chrono::Utc;
 use sqlx::MySqlPool;
 use uuid::Uuid;
+use std::fs;
 use validator::Validate;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use rand::RngCore;
 
 use crate::config::CONFIG;
 use crate::errors::{ApiError, ApiResult};
@@ -13,6 +17,8 @@ use crate::models::{
     CreateDnsRecordRequest, CreateDomainRequest, CreateSubdomainRequest, DnsRecord,
     DnsRecordResponse, Domain, DomainResponse, PaginatedDomains, Subdomain, SubdomainResponse, UpdateDnsRecordRequest,
     UpdateDomainRequest, CreateRedirectRequest, CreateAliasRequest, Redirect, DomainAlias,
+    DdnsHost, DdnsHostResponse, DdnsHostCreateResponse, CreateDdnsHostRequest, DdnsUpdateRequest,
+    SUBDOMAIN_REGEX,
 };
 use crate::models::CreateVirtualHostRequest;
 use crate::services::WebServerService;
@@ -173,14 +179,20 @@ impl DomainService {
             return Err(ApiError::AlreadyExists("Domain".to_string()));
         }
 
-        // Generate document root if not provided
-        let document_root = request.document_root.unwrap_or_else(|| {
-            format!(
-                "{}/{}/public_html",
-                CONFIG.file.user_home_base,
-                domain_name.replace('.', "_")
-            )
+        // Generate document root if not provided (default: /public_html/<domain>)
+        let document_root = request.document_root.clone().unwrap_or_else(|| {
+            format!("/public_html/{}", domain_name)
         });
+
+        // Ensure document root exists when using default path
+        if request.document_root.is_none() {
+            if let Err(e) = fs::create_dir_all(&document_root) {
+                return Err(ApiError::InternalError(format!(
+                    "Failed to create document root {}: {}",
+                    document_root, e
+                )));
+            }
+        }
 
         // Generate UUID
         let domain_id = Uuid::new_v4().to_string();
@@ -353,6 +365,180 @@ impl DomainService {
             .await?;
 
         tracing::info!("Domain deleted: {}", domain.domain_name);
+
+        Ok(())
+    }
+
+    // ==========================================
+    // DDNS HOSTS
+    // ==========================================
+    pub async fn get_ddns_hosts(
+        pool: &MySqlPool,
+        domain_id: &str,
+        user_id: &str,
+    ) -> ApiResult<Vec<DdnsHostResponse>> {
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Unauthorized);
+        }
+
+        let hosts = sqlx::query_as::<_, DdnsHost>(
+            "SELECT * FROM ddns_hosts WHERE domain_id = ? ORDER BY created_at DESC",
+        )
+        .bind(domain_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(hosts
+            .into_iter()
+            .map(|h| DdnsHostResponse {
+                id: h.id,
+                domain_id: h.domain_id,
+                hostname: h.hostname,
+                description: h.description,
+                last_ip: h.last_ip,
+                last_updated_at: h.last_updated_at,
+                created_at: h.created_at,
+                updated_at: h.updated_at,
+            })
+            .collect())
+    }
+
+    pub async fn create_ddns_host(
+        pool: &MySqlPool,
+        domain_id: &str,
+        user_id: &str,
+        request: CreateDdnsHostRequest,
+    ) -> ApiResult<DdnsHostCreateResponse> {
+        request
+            .validate()
+            .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Unauthorized);
+        }
+
+        let hostname_label = request.hostname.to_lowercase();
+        if !SUBDOMAIN_REGEX.is_match(&hostname_label) {
+            return Err(ApiError::ValidationError("Hostname tidak valid".to_string()));
+        }
+
+        let full_hostname = format!("{}.{}", hostname_label, domain.domain_name);
+
+        let existing = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM ddns_hosts WHERE hostname = ?",
+        )
+        .bind(&full_hostname)
+        .fetch_one(pool)
+        .await?;
+
+        if existing > 0 {
+            return Err(ApiError::AlreadyExists("DDNS Host".to_string()));
+        }
+
+        let mut bytes = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut bytes);
+        let api_key = URL_SAFE_NO_PAD.encode(bytes);
+
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+
+        sqlx::query(
+            r#"
+            INSERT INTO ddns_hosts (id, user_id, domain_id, hostname, description, api_key, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(user_id)
+        .bind(domain_id)
+        .bind(&full_hostname)
+        .bind(&request.description)
+        .bind(&api_key)
+        .bind(now)
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+        Ok(DdnsHostCreateResponse {
+            id,
+            domain_id: domain_id.to_string(),
+            hostname: full_hostname,
+            description: request.description,
+            api_key,
+            created_at: now,
+        })
+    }
+
+    pub async fn delete_ddns_host(
+        pool: &MySqlPool,
+        domain_id: &str,
+        ddns_id: &str,
+        user_id: &str,
+    ) -> ApiResult<()> {
+        let domain = sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+            .bind(domain_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ApiError::NotFound("Domain".to_string()))?;
+
+        if domain.user_id != user_id {
+            return Err(ApiError::Unauthorized);
+        }
+
+        let result = sqlx::query("DELETE FROM ddns_hosts WHERE id = ? AND domain_id = ?")
+            .bind(ddns_id)
+            .bind(domain_id)
+            .execute(pool)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::NotFound("DDNS Host".to_string()));
+        }
+
+        Ok(())
+    }
+
+    pub async fn update_ddns_host_ip(
+        pool: &MySqlPool,
+        request: DdnsUpdateRequest,
+        client_ip: Option<String>,
+    ) -> ApiResult<()> {
+        request
+            .validate()
+            .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+        let ip = request
+            .ip
+            .or(client_ip)
+            .unwrap_or_else(|| "0.0.0.0".to_string());
+        let now = Utc::now();
+
+        let result = sqlx::query(
+            "UPDATE ddns_hosts SET last_ip = ?, last_updated_at = ?, updated_at = ? WHERE id = ? AND api_key = ?",
+        )
+        .bind(&ip)
+        .bind(now)
+        .bind(now)
+        .bind(&request.id)
+        .bind(&request.key)
+        .execute(pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::Unauthorized);
+        }
 
         Ok(())
     }

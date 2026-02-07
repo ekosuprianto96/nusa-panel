@@ -121,6 +121,7 @@ async fn rocket() -> _ {
         .mount("/api/nodejs", routes::nodejs_routes())
         .mount("/api/packages", routes::package_routes())
         .mount("/api/phpmyadmin", routes::phpmyadmin_routes())
+        .mount("/api", routes::vuefinder_routes())
         // Serve Static Files for Frontend
         .mount("/", FileServer::from(&frontend_path))
         // Frontend
